@@ -1,0 +1,36 @@
+{
+  "name": "mine-build",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "A browser voxel sandbox with Tears-of-the-Kingdom-style building (Ultrahand + Fuse) and real photos you can hang in your world.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src tests",
+    "format": "prettier --write .",
+    "test": "vitest run",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "@dimforge/rapier3d-compat": "^0.21.0",
+    "idb": "^8.0.4",
+    "simplex-noise": "^4.0.3",
+    "three": "^0.186.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@playwright/test": "^1.56.1",
+    "@types/node": "^22.20.5",
+    "@types/three": "^0.186.0",
+    "eslint": "^9.39.5",
+    "fake-indexeddb": "^6.2.5",
+    "prettier": "^3.8.1",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.71.2",
+    "vite": "^8.3.4",
+    "vitest": "^5.0.4"
+  }
+}
