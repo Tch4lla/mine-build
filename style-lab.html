@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Style Lab</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 20px;
+        background: #15181d;
+        color: #eee;
+        font-family: system-ui, sans-serif;
+      }
+      #grid {
+        display: grid;
+        grid-template-columns: repeat(2, 760px);
+        gap: 16px;
+      }
+      figure {
+        margin: 0;
+        background: #20242b;
+        border-radius: 10px;
+        overflow: hidden;
+      }
+      canvas {
+        display: block;
+        width: 760px;
+        height: 470px;
+      }
+      figcaption {
+        padding: 10px 14px;
+        display: flex;
+        gap: 12px;
+        align-items: baseline;
+      }
+      figcaption b {
+        font-size: 18px;
+      }
+      figcaption span {
+        color: #a9b2b8;
+        font-size: 14px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="grid"></div>
+    <script type="module" src="/src/styleLab/main.ts"></script>
+  </body>
+</html>
