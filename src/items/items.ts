@@ -38,7 +38,8 @@ const add = (d: ItemDef) => items.push(d);
 
 // Blocks (all except air, water and special blocks).
 for (const b of BLOCKS) {
-  if (b.render === 'none' || b.render === 'custom' || b.key === 'water' || b.key === 'bedrock') continue;
+  if (b.render === 'none' || b.render === 'custom' || b.key.startsWith('water') || b.key === 'bedrock')
+    continue;
   add({ id: b.key, name: b.name, kind: 'block', maxStack: 64, block: b.id, color: '#888' });
 }
 

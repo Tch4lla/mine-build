@@ -2,7 +2,7 @@
  * Pure (DOM-free) chunk mesher: hidden-face culling with per-vertex ambient occlusion.
  * Produces separate buffers for solid/cutout geometry and translucent geometry (water).
  */
-import { BLOCKS, RENDER, WATER } from './blocks';
+import { BLOCKS, RENDER, WATER_STRENGTH } from './blocks';
 import { CHUNK_HEIGHT, CHUNK_SIZE, ChunkData } from './chunk';
 import { tileIndex, tileUV } from './tiles';
 
@@ -141,7 +141,15 @@ function faceVisible(self: number, nb: number): boolean {
   if (occludes(nb)) return false;
   const r = RENDER[self];
   if (r === 1) return true;
+  // Source and flowing water count as one body of water.
+  if (WATER_STRENGTH[self] && WATER_STRENGTH[nb]) return false;
   return nb !== self;
+}
+
+/** Height of a water block's surface: full under more water, otherwise lower the weaker the flow. */
+function waterSurface(strength: number, waterAbove: boolean): number {
+  if (waterAbove) return 1;
+  return Math.max(0.12, (strength / 8) * 0.88);
 }
 
 export function meshChunk(chunk: ChunkData, sample: BlockSampler): { solid: MeshData; water: MeshData } {
@@ -173,8 +181,9 @@ export function meshChunk(chunk: ChunkData, sample: BlockSampler): { solid: Mesh
         if (r === 0 || r === 4) continue;
         const out = r === 3 ? water : solid;
         const uvs = BLOCK_UVS[id];
-        const isWater = id === WATER;
-        const waterTopLowered = isWater && at(x, y + 1, z) !== WATER;
+        const strength = WATER_STRENGTH[id];
+        const isWater = strength > 0;
+        const surface = isWater ? waterSurface(strength, WATER_STRENGTH[at(x, y + 1, z)] > 0) : 1;
 
         for (let f = 0; f < 6; f++) {
           const face = FACES[f];
@@ -188,7 +197,7 @@ export function meshChunk(chunk: ChunkData, sample: BlockSampler): { solid: Mesh
           for (let c = 0; c < 4; c++) {
             const [cx, cy, cz] = face.corners[c];
             let py = y + cy;
-            if (waterTopLowered && cy === 1) py -= 0.12;
+            if (cy === 1 && surface < 1) py -= 1 - surface;
             out.pos.push(x + cx, py, z + cz);
             out.nor.push(nx, ny, nz);
             const [cu, cv] = CORNER_UV[c];

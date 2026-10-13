@@ -32,6 +32,8 @@ export interface BlockDef {
   hardness: number;
   tool: ToolClass;
   burnable?: boolean;
+  /** Falls when the block below is removed (sand, gravel). */
+  gravity?: boolean;
   /** Items dropped when broken. Defaults to the block's own item. */
   drops?: BlockDrop[];
 }
@@ -91,6 +93,7 @@ export const SAND = def({
   solid: true,
   hardness: 0.5,
   tool: 'shovel',
+  gravity: true,
 });
 export const WATER = def({
   key: 'water',
@@ -207,6 +210,7 @@ export const GRAVEL = def({
   key: 'gravel',
   name: 'Gravel',
   tiles: all('gravel'),
+  gravity: true,
   render: 'opaque',
   solid: true,
   hardness: 0.6,
@@ -253,6 +257,24 @@ export const PHOTO = def({
   drops: [],
 });
 
+/**
+ * Flowing water, strength 1 (thin trickle) to 7 (right next to a source). New ids are appended
+ * after every existing block so saved chunks keep their meaning.
+ */
+export const WATER_FLOW: number[] = [];
+for (let s = 1; s <= 7; s++) {
+  WATER_FLOW[s] = def({
+    key: `water_flow_${s}`,
+    name: 'Water',
+    tiles: all('water'),
+    render: 'translucent',
+    solid: false,
+    hardness: Infinity,
+    tool: 'none',
+    drops: [],
+  });
+}
+
 export const BLOCKS: readonly BlockDef[] = defs.map((d, id) => ({ ...d, id }));
 
 const byKey = new Map(BLOCKS.map((b) => [b.key, b]));
@@ -264,8 +286,23 @@ export function blockByKey(key: string): BlockDef | undefined {
 export const IS_SOLID = new Uint8Array(256);
 export const IS_OPAQUE = new Uint8Array(256);
 export const RENDER = new Uint8Array(256); // 0 none, 1 opaque, 2 cutout, 3 translucent, 4 custom
+export const FALLS = new Uint8Array(256);
+/** Water strength by id: 8 for a source block, 1-7 for flowing water, 0 for anything else. */
+export const WATER_STRENGTH = new Uint8Array(256);
+WATER_STRENGTH[WATER] = 8;
+for (let s = 1; s <= 7; s++) WATER_STRENGTH[WATER_FLOW[s]] = s;
 for (const b of BLOCKS) {
+  FALLS[b.id] = b.gravity ? 1 : 0;
   IS_SOLID[b.id] = b.solid ? 1 : 0;
   IS_OPAQUE[b.id] = b.render === 'opaque' ? 1 : 0;
   RENDER[b.id] = ['none', 'opaque', 'cutout', 'translucent', 'custom'].indexOf(b.render);
+}
+
+export function isWater(id: number): boolean {
+  return WATER_STRENGTH[id] > 0;
+}
+
+/** Block id for water of a given strength (8 = source). */
+export function waterOfStrength(strength: number): number {
+  return strength >= 8 ? WATER : strength <= 0 ? AIR : WATER_FLOW[strength];
 }

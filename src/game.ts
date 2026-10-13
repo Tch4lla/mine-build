@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { Physics, RAPIER, GROUP, groups } from './physics/physicsWorld';
 import { Input } from './engine/input';
 import { World } from './world/world';
-import { AIR, BEDROCK, BLOCKS, GRASS, IS_SOLID, PHOTO, SAND, SNOW, WATER, LEAVES } from './world/blocks';
+import { AIR, BEDROCK, BLOCKS, GRASS, IS_SOLID, PHOTO, SAND, SNOW, LEAVES, isWater } from './world/blocks';
 import { raycastVoxels, type VoxelHit } from './world/raycast';
 import { SEA_LEVEL } from './world/terrain';
 import { Player } from './player/player';
@@ -20,6 +20,8 @@ import { PARTS, partByItem, partRadius } from './build/parts';
 import { Tether } from './build/tether';
 import { Mobs, type Mob } from './entities/mobs';
 import { DroppedItems } from './entities/droppedItems';
+import { FallingBlocks } from './entities/fallingBlocks';
+import { BlockUpdates } from './world/blockUpdates';
 import { Particles } from './effects/particles';
 import { PhotoEntities, type FrameData } from './photos/photoEntities';
 import { addPhoto } from './photos/photoStore';
@@ -67,6 +69,8 @@ export class Game implements ScreenHost {
   readonly tether: Tether;
   readonly mobs: Mobs;
   readonly dropped: DroppedItems;
+  readonly falling: FallingBlocks;
+  readonly blockUpdates: BlockUpdates;
   readonly photos = new PhotoEntities();
   readonly particles = new Particles();
   readonly sky: Sky;
@@ -153,12 +157,15 @@ export class Game implements ScreenHost {
     this.mobs = new Mobs(this.physics, this.world);
     this.mobs.spawningEnabled = settings.slimes;
     this.dropped = new DroppedItems(this.world);
+    this.falling = new FallingBlocks(this.world);
+    this.blockUpdates = new BlockUpdates(this.world);
     this.scene.add(
       this.contraptions.group,
       this.tether.line,
       this.tether.beam,
       this.mobs.group,
       this.dropped.group,
+      this.falling.group,
       this.photos.group,
       this.particles.mesh,
     );
@@ -236,6 +243,10 @@ export class Game implements ScreenHost {
       if (!this.player.seated && feet.distanceTo(pos) < 1.4 && feet.y > pos.y - 0.2)
         this.player.launch(up.clone().multiplyScalar(16));
     };
+    // Water flow and falling sand react to every block change.
+    this.blockUpdates.onFall = (x, y, z, id) => this.falling.spawn(x, y, z, id);
+    this.falling.onBlocked = (id, pos) => this.dropped.drop({ id: BLOCKS[id].key, count: 1 }, pos);
+    this.world.onBlockChange((x, y, z) => this.blockUpdates.scheduleAround(x, y, z));
     this.world.onBlockChange((x, y, z, oldId, newId) => {
       if (!IS_SOLID[newId]) {
         for (const f of this.photos.framesOn(x, y, z)) {
@@ -537,6 +548,8 @@ export class Game implements ScreenHost {
       this.mobs.sync();
       this.dropped.update(dt, this.time, this.player.position, (s) => this.inventory.add(s));
       this.updateFires(dt);
+      this.blockUpdates.step(dt);
+      this.falling.update(dt);
       this.particles.update(dt);
       this.sky.update(
         dt,
@@ -573,7 +586,7 @@ export class Game implements ScreenHost {
 
   private isCameraUnderwater(): boolean {
     const p = this.camera.position;
-    return this.world.getBlock(Math.floor(p.x), Math.floor(p.y), Math.floor(p.z)) === WATER;
+    return isWater(this.world.getBlock(Math.floor(p.x), Math.floor(p.y), Math.floor(p.z)));
   }
 
   private updateCamera(): void {
@@ -789,7 +802,7 @@ export class Game implements ScreenHost {
       dir.z,
       reach,
       (x, y, z) => this.world.getBlock(x, y, z),
-      (id) => id !== AIR && id !== WATER,
+      (id) => id !== AIR && !isWater(id),
     );
     if (hit)
       best = {
@@ -985,17 +998,10 @@ export class Game implements ScreenHost {
 
   breakBlock(x: number, y: number, z: number, drops: boolean): void {
     const id = this.world.getBlock(x, y, z);
-    if (id === AIR || id === BEDROCK || id === WATER) return;
+    if (id === AIR || id === BEDROCK || isWater(id)) return;
     const b = BLOCKS[id];
-    // Water flows into the hole if there's water next to it (simple, one step).
-    const nextToWater = [
-      [1, 0, 0],
-      [-1, 0, 0],
-      [0, 0, 1],
-      [0, 0, -1],
-      [0, 1, 0],
-    ].some(([dx, dy, dz]) => this.world.getBlock(x + dx, y + dy, z + dz) === WATER);
-    this.world.setBlock(x, y, z, nextToWater && y <= SEA_LEVEL ? WATER : AIR);
+    // Neighbouring water flows in and unsupported sand falls via BlockUpdates.
+    this.world.setBlock(x, y, z, AIR);
     this.particles.burst(new THREE.Vector3(x + 0.5, y + 0.5, z + 0.5), tileColor(b.tiles.side), 16, {
       speed: 3,
     });
@@ -1249,7 +1255,7 @@ export class Game implements ScreenHost {
 
   private canPlaceAt(x: number, y: number, z: number): boolean {
     const cur = this.world.getBlock(x, y, z);
-    if (cur !== AIR && cur !== WATER) return false;
+    if (cur !== AIR && !isWater(cur)) return false;
     if (this.player.intersectsBlock(x, y, z)) return false;
     // Don't place blocks inside parts or mobs.
     const shape = new RAPIER.Cuboid(0.45, 0.45, 0.45);
@@ -1309,7 +1315,7 @@ export class Game implements ScreenHost {
         for (let dz = -r; dz <= r; dz++) {
           if (dx * dx + dy * dy + dz * dz > radius * radius) continue;
           const id = this.world.getBlock(cx + dx, cy + dy, cz + dz);
-          if (id === AIR || id === BEDROCK || id === WATER) continue;
+          if (id === AIR || id === BEDROCK || isWater(id)) continue;
           this.world.setBlock(cx + dx, cy + dy, cz + dz, AIR);
         }
     this.world.flushDirtyNear(pos);

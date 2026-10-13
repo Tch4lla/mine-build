@@ -2,7 +2,7 @@
 import * as THREE from 'three';
 import { RAPIER, GROUPS, type Physics } from '../physics/physicsWorld';
 import type { Input } from '../engine/input';
-import { WATER } from '../world/blocks';
+import { isWater } from '../world/blocks';
 import type { World } from '../world/world';
 
 const HALF_HEIGHT = 0.6;
@@ -105,7 +105,7 @@ export class Player {
       Math.floor(this.position.y + 0.3),
       Math.floor(this.position.z),
     );
-    this.inWater = head === WATER || feet === WATER;
+    this.inWater = isWater(head) || isWater(feet);
 
     // Desired horizontal movement in the camera's yaw frame.
     const f = (input.isDown('KeyW') ? 1 : 0) - (input.isDown('KeyS') ? 1 : 0);
