@@ -3,6 +3,18 @@ import { h, clear } from './dom';
 import { createWorld, deleteWorld, exportWorld, importWorld, listWorlds } from '../save/saveManager';
 import type { WorldMeta } from '../save/serialize';
 import { seedFromString } from '../engine/rng';
+import { GAME_NAME, GAME_NAME_KANJI, GAME_SLUG, TAGLINE } from '../brand';
+import { migrateLocalStorageKey } from '../save/legacy';
+
+/** The title lockup: the name with its kanji above it. */
+function logo(): HTMLElement {
+  return h(
+    'div',
+    { class: 'logo' },
+    h('span', { class: 'logo-kanji', 'aria-hidden': 'true' }, GAME_NAME_KANJI),
+    h('span', { class: 'logo-name' }, GAME_NAME),
+  );
+}
 
 export interface Settings {
   renderDistance: number;
@@ -13,7 +25,8 @@ export interface Settings {
 }
 
 const DEFAULTS: Settings = { renderDistance: 6, fov: 75, sensitivity: 1, slimes: true, invertY: false };
-const KEY = 'mine-build-settings';
+const KEY = `${GAME_SLUG}-settings`;
+migrateLocalStorageKey('mine-build-settings', KEY);
 
 export function loadSettings(): Settings {
   try {
@@ -44,7 +57,7 @@ function download(name: string, text: string): void {
 
 export async function exportWorldToFile(meta: WorldMeta): Promise<void> {
   const json = await exportWorld(meta.id);
-  download(`${meta.name.replace(/[^\w-]+/g, '_') || 'world'}.minebuild.json`, json);
+  download(`${meta.name.replace(/[^\w-]+/g, '_') || 'world'}.${GAME_SLUG}.json`, json);
 }
 
 export class MainMenu {
@@ -58,10 +71,7 @@ export class MainMenu {
     this.root.classList.remove('hidden');
     clear(this.root);
     const screen = h('div', { class: 'menu-screen' });
-    screen.append(
-      h('div', { class: 'logo' }, 'MINE BUILD'),
-      h('div', { class: 'tagline' }, 'Build anything. Fuse everything. Hang your memories.'),
-    );
+    screen.append(logo(), h('div', { class: 'tagline' }, TAGLINE));
     this.root.append(screen);
     if (this.view === 'create') return this.renderCreate(screen);
 
@@ -199,14 +209,7 @@ export class MainMenu {
 
   loading(text: string): void {
     clear(this.root);
-    this.root.append(
-      h(
-        'div',
-        { class: 'menu-screen' },
-        h('div', { class: 'logo' }, 'MINE BUILD'),
-        h('div', { class: 'loading' }, text),
-      ),
-    );
+    this.root.append(h('div', { class: 'menu-screen' }, logo(), h('div', { class: 'loading' }, text)));
   }
 }
 
@@ -274,7 +277,7 @@ export function showPause(root: HTMLElement, a: PauseActions): void {
         ...range('Render distance', 'renderDistance', 3, 12, 1),
         ...range('Field of view', 'fov', 50, 110, 1),
         ...range('Mouse sensitivity', 'sensitivity', 0.2, 3, 0.1),
-        ...check('Slimes', 'slimes'),
+        ...check('Puffballs', 'slimes'),
         ...check('Invert mouse Y', 'invertY'),
         h('label', {}, 'Creative mode'),
         creative,

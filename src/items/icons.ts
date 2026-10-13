@@ -56,7 +56,7 @@ function blockIcon(blockId: number): string {
     ctx.fillRect(0, 0, TILE_PX, TILE_PX);
     ctx.restore();
   };
-  const s = 1.3;
+  const s = (1.3 * 16) / TILE_PX;
   // Isometric projection: top, left and right faces.
   face(b.tiles.top, [s, s * 0.5, -s, s * 0.5, 24, 3], 1);
   face(b.tiles.side, [s, s * 0.5, 0, s * 1.1, 3, 13.5], 0.8);
@@ -73,7 +73,7 @@ function spriteIcon(id: string, overlay?: string): string {
   return c.toDataURL();
 }
 
-/** Data URL icon for a stack (fused tools get a small material badge). */
+/** Data URL icon for a stack (bound tools get a small material badge). */
 export function iconFor(stack: ItemStack | { id: string; data?: ItemStack['data'] }): string {
   const def = item(stack.id);
   const fuse = stack.data?.fuse;

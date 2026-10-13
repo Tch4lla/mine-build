@@ -1,4 +1,5 @@
 import './style.css';
+import { GAME_NAME } from './brand';
 import { initPhysics } from './physics/physicsWorld';
 import { createAtlasTexture } from './engine/atlas';
 import { initIcons } from './items/icons';
@@ -102,5 +103,5 @@ async function boot(): Promise<void> {
 
 boot().catch((e) => {
   console.error(e);
-  menuRoot.innerHTML = `<div class="menu-screen"><div class="logo">MINE BUILD</div><p>Failed to start: ${String(e?.message ?? e)}</p><p class="muted">This game needs WebGL and a modern browser.</p></div>`;
+  menuRoot.innerHTML = `<div class="menu-screen"><div class="logo"><span class="logo-name">${GAME_NAME}</span></div><p>Failed to start: ${String(e?.message ?? e)}</p><p class="muted">This game needs WebGL and a modern browser.</p></div>`;
 });

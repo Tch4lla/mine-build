@@ -33,14 +33,8 @@ export class ViewModel {
     if (this.current) this.holder.remove(this.current);
     this.current = null;
     if (!stack) {
-      // Blocky arm.
-      const arm = new THREE.Mesh(
-        new THREE.BoxGeometry(0.22, 0.22, 0.7),
-        new THREE.MeshLambertMaterial({ color: 0xd9a77a }),
-      );
-      arm.position.set(0, -0.05, 0.1);
-      this.current = arm;
-      this.holder.add(arm);
+      this.current = glove();
+      this.holder.add(this.current);
       return;
     }
     const def = item(stack.id);
@@ -98,4 +92,32 @@ export class ViewModel {
     this.light.intensity = 0.4 + intensity * 0.9;
     this.ambient.intensity = 0.25 + intensity * 0.45;
   }
+}
+
+/** The empty-handed view: a rounded work glove with a vermilion cuff, fingers pointing forward. */
+function glove(): THREE.Object3D {
+  const g = new THREE.Group();
+  const cloth = new THREE.MeshLambertMaterial({ color: 0x2f5d62 });
+  const cuffMat = new THREE.MeshLambertMaterial({ color: 0xe4572e });
+  const cuff = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.078, 0.07, 14), cuffMat);
+  cuff.rotation.x = Math.PI / 2;
+  cuff.position.z = 0.13;
+  const palm = new THREE.Mesh(new THREE.SphereGeometry(0.09, 16, 12), cloth);
+  palm.scale.set(1.05, 0.55, 1.2);
+  palm.position.z = 0.04;
+  g.add(cuff, palm);
+  for (let i = 0; i < 4; i++) {
+    const finger = new THREE.Mesh(new THREE.CapsuleGeometry(0.018, 0.07, 4, 8), cloth);
+    finger.rotation.x = Math.PI / 2 - 0.25;
+    finger.position.set(-0.05 + i * 0.033, -0.012, -0.08 - (i === 1 || i === 2 ? 0.012 : 0));
+    g.add(finger);
+  }
+  const thumb = new THREE.Mesh(new THREE.CapsuleGeometry(0.02, 0.05, 4, 8), cloth);
+  thumb.rotation.set(Math.PI / 2, 0, 0.9);
+  thumb.position.set(-0.085, 0.005, -0.01);
+  g.add(thumb);
+  g.rotation.set(0.15, 0.25, -0.2);
+  g.scale.setScalar(0.62);
+  g.position.set(0.02, 0.04, -0.12);
+  return g;
 }

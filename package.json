@@ -1,9 +1,9 @@
 {
-  "name": "mine-build",
+  "name": "sozo",
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "A browser voxel sandbox with Tears-of-the-Kingdom-style building (Ultrahand + Fuse) and real photos you can hang in your world.",
+  "description": "Sōzō (創造, creation): a browser block-building sandbox with physics builds, tool binding, and your own photos in the world.",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",

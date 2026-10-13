@@ -17,7 +17,7 @@ import {
   type DriveInput,
 } from './build/contraptions';
 import { PARTS, partByItem, partRadius } from './build/parts';
-import { Ultrahand } from './build/ultrahand';
+import { Tether } from './build/tether';
 import { Mobs, type Mob } from './entities/mobs';
 import { DroppedItems } from './entities/droppedItems';
 import { Particles } from './effects/particles';
@@ -25,7 +25,7 @@ import { PhotoEntities, type FrameData } from './photos/photoEntities';
 import { addPhoto } from './photos/photoStore';
 import { processImageFile } from './photos/importPhoto';
 import { registerThumb, setMaxAnisotropy } from './photos/photoTextures';
-import { applyFuse, breakTime, canFuse, stackStats, wearFuse, type FusedStats } from './fuse/fuseRecipes';
+import { applyBind, breakTime, canBind, stackStats, wearBind, type BoundStats } from './bind/bindRecipes';
 import { Sky } from './view/sky';
 import { ViewModel } from './view/viewmodel';
 import { Hud } from './ui/hud';
@@ -43,7 +43,7 @@ type Target =
 const UP = new THREE.Vector3(0, 1, 0);
 const SCREEN_KEYS: Record<string, ScreenName> = {
   KeyE: 'inventory',
-  KeyV: 'fuse',
+  KeyV: 'workbench',
   KeyP: 'gallery',
   KeyH: 'help',
 };
@@ -64,7 +64,7 @@ export class Game implements ScreenHost {
   readonly player: Player;
   readonly inventory = new Inventory();
   readonly contraptions: ContraptionManager;
-  readonly ultrahand: Ultrahand;
+  readonly tether: Tether;
   readonly mobs: Mobs;
   readonly dropped: DroppedItems;
   readonly photos = new PhotoEntities();
@@ -149,14 +149,14 @@ export class Game implements ScreenHost {
     this.player = new Player(this.physics, this.world);
     this.player.creative = meta.creative;
     this.contraptions = new ContraptionManager(this.physics);
-    this.ultrahand = new Ultrahand(this.physics, this.contraptions);
+    this.tether = new Tether(this.physics, this.contraptions);
     this.mobs = new Mobs(this.physics, this.world);
     this.mobs.spawningEnabled = settings.slimes;
     this.dropped = new DroppedItems(this.world);
     this.scene.add(
       this.contraptions.group,
-      this.ultrahand.line,
-      this.ultrahand.beam,
+      this.tether.line,
+      this.tether.beam,
       this.mobs.group,
       this.dropped.group,
       this.photos.group,
@@ -223,7 +223,7 @@ export class Game implements ScreenHost {
       this.player.teleport(this.spawn.x, this.spawn.y, this.spawn.z);
     };
     this.mobs.onSlimeDeath = (pos) => {
-      this.particles.burst(pos, 0x7ed957, 24, { speed: 4 });
+      this.particles.burst(pos, 0xb9a6e8, 24, { speed: 4 });
       this.dropped.drop(
         { id: 'slime', count: 1 + Math.floor(Math.random() * 2) },
         pos,
@@ -474,7 +474,7 @@ export class Game implements ScreenHost {
     }
     if (SCREEN_KEYS[e.code]) {
       e.preventDefault();
-      this.ultrahand.release();
+      this.tether.release();
       this.screens.show(SCREEN_KEYS[e.code]);
     } else if (e.code === 'F3') {
       e.preventDefault();
@@ -517,7 +517,7 @@ export class Game implements ScreenHost {
         const d = drive && !toggleUsed ? drive : drive ? { ...drive, toggleDevices: false } : null;
         toggleUsed = true;
         this.contraptions.step(step, d, this.seatedIn?.c ?? null);
-        this.ultrahand.update(this.player.eye(eye), this.player.look(look), this.player.yaw);
+        this.tether.update(this.player.eye(eye), this.player.look(look), this.player.yaw);
       });
       if (this.seatedIn && !this.contraptions.list.includes(this.seatedIn.c)) this.exitSeat();
       if (this.seatedIn && !this.seatedIn.c.parts.includes(this.seatedIn.p)) this.exitSeat();
@@ -591,7 +591,7 @@ export class Game implements ScreenHost {
   private updateView(dt: number): void {
     const held = this.inventory.held;
     const stats = stackStats(held);
-    this.viewmodel.setStack(this.ultrahand.held ? null : held);
+    this.viewmodel.setStack(this.tether.held ? null : held);
     this.viewmodel.guarding = held?.id === 'shield' && this.input.isDown('Mouse2');
     const moving =
       (this.input.isDown('KeyW') ||
@@ -627,7 +627,7 @@ export class Game implements ScreenHost {
 
   private handleKeys(): void {
     const input = this.input;
-    const uh = this.ultrahand;
+    const uh = this.tether;
     for (let i = 0; i < HOTBAR_SIZE; i++) {
       if (input.pressed(`Digit${i + 1}`)) this.selectSlot(i);
     }
@@ -655,7 +655,7 @@ export class Game implements ScreenHost {
         const t = this.target;
         if (t?.kind === 'part' && t.c !== this.seatedIn?.c)
           uh.grab(t.c, t.p, t.point, t.distance, this.player.yaw);
-        else this.toast('Ultrahand: aim at a part (place one with right-click) and press G');
+        else this.toast('Tether: aim at a part (place one with right-click) and press G');
       }
     }
     if (uh.held) {
@@ -667,10 +667,10 @@ export class Game implements ScreenHost {
       if (input.pressed('KeyX') && !uh.detachHeld())
         this.toast('Nothing to detach — this part is on its own');
       if (input.pressed('KeyF')) {
-        const merged = uh.fuse();
+        const merged = uh.join();
         if (merged) {
           this.particles.burst(merged.position, 0x7aff9a, 18, { speed: 2.5, gravity: 0 });
-          this.toast(`Fused! (${merged.parts.length} parts)`);
+          this.toast(`Joined! (${merged.parts.length} parts)`);
         } else this.toast('Move the part next to another one until a green line shows, then press F');
       }
     } else if (input.pressed('KeyF')) this.useF();
@@ -697,14 +697,14 @@ export class Game implements ScreenHost {
     this.hud.showHeldName(this.inventory);
   }
 
-  /** F: fuse a dropped material onto the held tool, fuse a lone part onto it, or sit in a seat. */
+  /** F: bind a dropped material onto the held tool, bind a lone part onto it, or sit in a seat. */
   private useF(): void {
     const held = this.inventory.held;
     const isTool = held && item(held.id).kind === 'tool';
     if (isTool) {
       const d = this.dropped.pick(this.player.eye(), this.player.look(), 4);
-      if (d && canFuse(held!.id, d.stack.id)) {
-        this.fuseOntoHeld(d.stack.id);
+      if (d && canBind(held!.id, d.stack.id)) {
+        this.bindOntoHeld(d.stack.id);
         if (d.stack.count > 1) d.stack.count--;
         else this.dropped.remove(d);
         this.particles.burst(d.pos, item(d.stack.id).color, 14, { speed: 2 });
@@ -714,10 +714,10 @@ export class Game implements ScreenHost {
       if (
         t?.kind === 'part' &&
         t.c.parts.length === 1 &&
-        canFuse(held!.id, t.p.def.itemId) &&
+        canBind(held!.id, t.p.def.itemId) &&
         t.c !== this.seatedIn?.c
       ) {
-        this.fuseOntoHeld(t.p.def.itemId);
+        this.bindOntoHeld(t.p.def.itemId);
         this.particles.burst(t.point, item(t.p.def.itemId).color, 14, { speed: 2 });
         this.contraptions.destroy(t.c);
         return;
@@ -728,22 +728,22 @@ export class Game implements ScreenHost {
       this.sit(t.c, t.p);
       return;
     }
-    if (isTool) this.toast('Drop a material with Q, look at it and press F to fuse it onto your tool');
+    if (isTool) this.toast('Drop a material with Q, look at it and press F to bind it onto your tool');
   }
 
-  private fuseOntoHeld(materialId: string): void {
+  private bindOntoHeld(materialId: string): void {
     const slot = this.inventory.selected;
     const tool = this.inventory.slots[slot]!;
-    this.inventory.slots[slot] = applyFuse(tool, materialId);
+    this.inventory.slots[slot] = applyBind(tool, materialId);
     this.inventory.changed();
     const s = stackStats(this.inventory.slots[slot])!;
-    this.toast(`Fused ${item(materialId).name} → ${s.name}`);
+    this.toast(`Bound ${item(materialId).name} → ${s.name}`);
     this.hud.showHeldName(this.inventory);
   }
 
   private sit(c: Contraption, p: PartInstance): void {
     if (c.occupiedSeat) return;
-    this.ultrahand.release();
+    this.tether.release();
     c.occupiedSeat = p;
     this.seatedIn = { c, p };
     this.player.setColliderEnabled(false);
@@ -800,7 +800,7 @@ export class Game implements ScreenHost {
       };
 
     const ray = new RAPIER.Ray(eye, dir);
-    const exclude = this.ultrahand.held?.c.body;
+    const exclude = this.tether.held?.c.body;
     const rh = this.physics.world.castRay(
       ray,
       reach,
@@ -827,7 +827,7 @@ export class Game implements ScreenHost {
       };
 
     this.target = best;
-    if (best?.kind === 'block' && !this.ultrahand.held) {
+    if (best?.kind === 'block' && !this.tether.held) {
       this.highlight.visible = true;
       this.highlight.position.set(best.hit.x + 0.5, best.hit.y + 0.5, best.hit.z + 0.5);
     } else this.highlight.visible = false;
@@ -840,7 +840,7 @@ export class Game implements ScreenHost {
       label =
         best.mob.kind === 'dummy'
           ? 'Training Dummy'
-          : `Slime ${Math.max(0, Math.ceil(best.mob.hp))}/${best.mob.maxHp}`;
+          : `Puffball ${Math.max(0, Math.ceil(best.mob.hp))}/${best.mob.maxHp}`;
     else if (best?.kind === 'frame') label = 'Picture Frame';
     this.hud.setTarget(this.screens.open ? '' : label);
   }
@@ -854,9 +854,9 @@ export class Game implements ScreenHost {
         ['Space', 'Switch fans/rockets'],
         ['Shift', 'Get off'],
       ];
-    if (this.ultrahand.held) {
+    if (this.tether.held) {
       return [
-        ['F', this.ultrahand.candidate ? 'Fuse to highlighted part' : 'Fuse (bring next to a part)'],
+        ['F', this.tether.candidate ? 'Join to highlighted part' : 'Join (bring next to a part)'],
         ['R T Y', 'Rotate'],
         ['Wheel', 'Nearer / farther'],
         ['X', 'Detach this part'],
@@ -868,17 +868,17 @@ export class Game implements ScreenHost {
     const held = this.inventory.held;
     const def = held ? item(held.id) : null;
     if (t?.kind === 'part') {
-      hints.push(['G', 'Grab (Ultrahand)']);
+      hints.push(['G', 'Tether (grab)']);
       if (t.p.def.behavior === 'seat') hints.push(['F', 'Sit']);
       if (t.p.def.activatable) hints.push(['LMB', t.p.active ? 'Switch off' : 'Switch on']);
-      if (def?.kind === 'tool' && t.c.parts.length === 1 && canFuse(held!.id, t.p.def.itemId))
-        hints.push(['F', `Fuse onto ${def.name}`]);
+      if (def?.kind === 'tool' && t.c.parts.length === 1 && canBind(held!.id, t.p.def.itemId))
+        hints.push(['F', `Bind onto ${def.name}`]);
       hints.push(['Shift LMB', 'Pick up']);
     }
     if (def?.kind === 'tool') {
       const d = this.dropped.pick(this.player.eye(), this.player.look(), 4);
-      if (d && canFuse(held!.id, d.stack.id))
-        hints.push(['F', `Fuse ${item(d.stack.id).name} onto ${def.name}`]);
+      if (d && canBind(held!.id, d.stack.id))
+        hints.push(['F', `Bind ${item(d.stack.id).name} onto ${def.name}`]);
       if (held!.id === 'shield')
         hints.push([
           'RMB',
@@ -894,7 +894,7 @@ export class Game implements ScreenHost {
     if (def?.kind === 'photo_frame')
       hints.push(['RMB', 'Hang picture'], ['[ ]', `Size ${held!.data?.size ?? 2}×`]);
     if (def?.kind === 'photo_block') hints.push(['RMB', 'Place photo block']);
-    if (def?.fusable && def.kind === 'material') hints.push(['V', 'Fuse onto a tool']);
+    if (def?.fusable && def.kind === 'material') hints.push(['V', 'Bind onto a tool']);
     if (hints.length === 0) hints.push(['E', 'Inventory'], ['P', 'Photos'], ['H', 'Help']);
     return hints;
   }
@@ -912,8 +912,8 @@ export class Game implements ScreenHost {
       this.hud.setBreakProgress(0);
       return;
     }
-    if (this.ultrahand.held) {
-      if (input.pressed('Mouse0')) this.ultrahand.release();
+    if (this.tether.held) {
+      if (input.pressed('Mouse0')) this.tether.release();
       this.hud.setBreakProgress(0);
       return;
     }
@@ -943,7 +943,7 @@ export class Game implements ScreenHost {
     }
   }
 
-  private continueBreaking(hit: VoxelHit, stats: FusedStats | null, dt: number, justPressed: boolean): void {
+  private continueBreaking(hit: VoxelHit, stats: BoundStats | null, dt: number, justPressed: boolean): void {
     const b = BLOCKS[hit.id];
     if (
       !this.breaking ||
@@ -977,7 +977,7 @@ export class Game implements ScreenHost {
     if (this.breaking.progress >= 1) {
       this.breakBlock(hit.x, hit.y, hit.z, true);
       this.breaking = null;
-      // Fused tools wear when mining with them.
+      // Bound tools wear when mining with them.
       if (this.inventory.held?.data?.fuse && stats && stats.cls === b.tool) this.wearHeld(1);
       if (stats?.effect === 'fire' && b.burnable) this.ignite(hit.x, hit.y, hit.z);
     }
@@ -1019,7 +1019,7 @@ export class Game implements ScreenHost {
     const s = this.inventory.slots[slot];
     if (!s?.data?.fuse) return;
     const mat = s.data.fuse;
-    const { stack, broke } = wearFuse(s, amount);
+    const { stack, broke } = wearBind(s, amount);
     this.inventory.slots[slot] = stack;
     this.inventory.changed();
     if (broke) {
@@ -1030,7 +1030,7 @@ export class Game implements ScreenHost {
     }
   }
 
-  private attack(t: Target | null, stats: FusedStats | null, shift: boolean): void {
+  private attack(t: Target | null, stats: BoundStats | null, shift: boolean): void {
     this.attackCooldown = 0.32;
     this.viewmodel.doSwing();
     const look = this.player.look();
@@ -1098,7 +1098,7 @@ export class Game implements ScreenHost {
       );
       this.particles.burst(
         t.point,
-        effect === 'fire' ? 0xff8a2a : t.mob.kind === 'slime' ? 0x7ed957 : 0xd9b866,
+        effect === 'fire' ? 0xff8a2a : t.mob.kind === 'slime' ? 0xb9a6e8 : 0xd9b866,
         8,
         { speed: 3 },
       );
@@ -1117,7 +1117,7 @@ export class Game implements ScreenHost {
   private use(
     t: Target | null,
     held: ItemStack | null,
-    stats: FusedStats | null,
+    stats: BoundStats | null,
     justPressed: boolean,
   ): void {
     // Sitting takes priority when aiming at a seat with something non-placeable.

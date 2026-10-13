@@ -1,15 +1,15 @@
-/** Fuse: attach a material to a tool, TotK style. Pure stat math so it can be unit tested. */
+/** Bind: attach a material to a tool. Pure stat math so it can be unit tested. */
 import { item, type WeaponClass } from '../items/items';
 import type { ItemStack } from '../items/inventory';
 
-export type FuseEffect = 'none' | 'fire' | 'bounce' | 'blast' | 'wind' | 'light' | 'rocket' | 'spring';
+export type BindEffect = 'none' | 'fire' | 'bounce' | 'blast' | 'wind' | 'light' | 'rocket' | 'spring';
 
 export interface MaterialStats {
   damage: number;
   breakMult: number;
   knockbackMult: number;
   durability: number;
-  effect: FuseEffect;
+  effect: BindEffect;
 }
 
 export const MATERIALS: Record<string, MaterialStats> = {
@@ -45,23 +45,23 @@ const OVERRIDES: Record<string, Override> = {
   'wood_pickaxe+iron_chunk': { name: 'Iron-Tipped Pickaxe' },
 };
 
-export interface FusedStats {
+export interface BoundStats {
   name: string;
   cls: WeaponClass;
   damage: number;
   breakSpeed: number;
   knockback: number;
-  /** Durability of the fused material (Infinity for unfused tools). */
+  /** Durability of the bound material (Infinity for unbound tools). */
   durability: number;
-  effect: FuseEffect;
+  effect: BindEffect;
 }
 
-export function canFuse(toolId: string, materialId: string): boolean {
+export function canBind(toolId: string, materialId: string): boolean {
   const t = item(toolId);
   return t.kind === 'tool' && materialId in MATERIALS && item(materialId).fusable === true;
 }
 
-export function fusedStats(toolId: string, materialId?: string): FusedStats {
+export function boundStats(toolId: string, materialId?: string): BoundStats {
   const t = item(toolId);
   if (!t.tool) throw new Error(`${toolId} is not a tool`);
   const base = t.tool;
@@ -77,7 +77,7 @@ export function fusedStats(toolId: string, materialId?: string): FusedStats {
     };
   }
   const m = MATERIALS[materialId];
-  if (!m) throw new Error(`${materialId} cannot be fused`);
+  if (!m) throw new Error(`${materialId} cannot be bound`);
   const o = OVERRIDES[`${toolId}+${materialId}`];
   return {
     name: o?.name ?? `${item(materialId).name} ${t.name}`,
@@ -90,15 +90,15 @@ export function fusedStats(toolId: string, materialId?: string): FusedStats {
   };
 }
 
-export function stackStats(stack: ItemStack | null): FusedStats | null {
+export function stackStats(stack: ItemStack | null): BoundStats | null {
   if (!stack || item(stack.id).kind !== 'tool') return null;
-  return fusedStats(stack.id, stack.data?.fuse);
+  return boundStats(stack.id, stack.data?.fuse);
 }
 
-/** Returns a new stack with the material fused on (replacing any previous fusion). */
-export function applyFuse(tool: ItemStack, materialId: string): ItemStack {
-  if (!canFuse(tool.id, materialId)) throw new Error(`Cannot fuse ${materialId} onto ${tool.id}`);
-  const stats = fusedStats(tool.id, materialId);
+/** Returns a new stack with the material bound on (replacing any previous one). */
+export function applyBind(tool: ItemStack, materialId: string): ItemStack {
+  if (!canBind(tool.id, materialId)) throw new Error(`Cannot fuse ${materialId} onto ${tool.id}`);
+  const stats = boundStats(tool.id, materialId);
   return { id: tool.id, count: 1, data: { ...tool.data, fuse: materialId, durability: stats.durability } };
 }
 
@@ -106,7 +106,7 @@ export function applyFuse(tool: ItemStack, materialId: string): ItemStack {
  * Wears down the fused material. Returns the new stack and whether the material broke off.
  * Unfused tools do not wear.
  */
-export function wearFuse(tool: ItemStack, amount = 1): { stack: ItemStack; broke: boolean } {
+export function wearBind(tool: ItemStack, amount = 1): { stack: ItemStack; broke: boolean } {
   if (!tool.data?.fuse) return { stack: tool, broke: false };
   const d = (tool.data.durability ?? 1) - amount;
   if (d <= 0) {
@@ -119,7 +119,7 @@ export function wearFuse(tool: ItemStack, amount = 1): { stack: ItemStack; broke
 }
 
 /** Break-time in seconds for a block of the given hardness and preferred tool. */
-export function breakTime(hardness: number, blockTool: string, stats: FusedStats | null): number {
+export function breakTime(hardness: number, blockTool: string, stats: BoundStats | null): number {
   if (!Number.isFinite(hardness)) return Infinity;
   let speed = 1;
   if (stats && blockTool !== 'none' && stats.cls === blockTool) speed = stats.breakSpeed;

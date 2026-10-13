@@ -1,0 +1,10 @@
+Sōzō (創造)
+
+Sōzō is an independent game. It is not affiliated with, endorsed by, or sponsored by
+Mojang Studios, Microsoft Corporation, or Nintendo Co., Ltd. All product names and
+trademarks mentioned anywhere in this project belong to their respective owners.
+
+All textures, models and sprites in Sōzō are generated procedurally by the game's own code.
+
+Third-party open-source libraries are used under their own licences, including
+Three.js (MIT), Rapier (Apache-2.0), simplex-noise (MIT) and idb (ISC).

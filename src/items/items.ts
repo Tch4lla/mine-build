@@ -12,7 +12,7 @@ export interface ToolStats {
   breakSpeed: number;
   knockback: number;
   durability: number;
-  /** Pixel coords (16x16 icon grid) where fused materials attach. */
+  /** Pixel coords (16x16 icon grid) where bound materials attach. */
   fuseAnchor: [number, number];
 }
 
@@ -24,11 +24,11 @@ export interface ItemDef {
   /** Block placed by this item. */
   block?: number;
   tool?: ToolStats;
-  /** Part spawned by this item (Ultrahand). */
+  /** Part spawned by this item (Tether). */
   part?: string;
-  /** Can be fused onto tools. */
+  /** Can be bound onto tools. */
   fusable?: boolean;
-  /** Primary colour (for icons, particles and fused models). */
+  /** Primary colour (for icons, particles and bound models). */
   color: string;
   description?: string;
 }
@@ -50,7 +50,7 @@ add({
   maxStack: 16,
   color: '#8b5a2b',
   tool: { cls: 'stick', damage: 2, breakSpeed: 1, knockback: 1, durability: 30, fuseAnchor: [12, 3] },
-  description: 'A humble stick. Fuse something to it!',
+  description: 'A humble stick. Bind something to it!',
 });
 add({
   id: 'wood_sword',
@@ -91,10 +91,10 @@ add({
   maxStack: 1,
   color: '#9a6b3c',
   tool: { cls: 'shield', damage: 1, breakSpeed: 1, knockback: 2, durability: 100, fuseAnchor: [8, 8] },
-  description: 'Hold right-click to guard. Fuse a rocket for a shield jump!',
+  description: 'Hold right-click to guard. Bind a rocket for a shield jump!',
 });
 
-// Fuse materials.
+// Bind materials.
 add({ id: 'rock', name: 'Rock', kind: 'material', maxStack: 64, fusable: true, color: '#8a8a8a' });
 add({ id: 'flint', name: 'Flint', kind: 'material', maxStack: 64, fusable: true, color: '#3b3b44' });
 add({
@@ -107,7 +107,7 @@ add({
 });
 add({ id: 'crystal', name: 'Crystal', kind: 'material', maxStack: 64, fusable: true, color: '#6ee6ff' });
 add({ id: 'ember', name: 'Ember', kind: 'material', maxStack: 64, fusable: true, color: '#ff7a2a' });
-add({ id: 'slime', name: 'Slime Gel', kind: 'material', maxStack: 64, fusable: true, color: '#7ed957' });
+add({ id: 'slime', name: 'Puff Gel', kind: 'material', maxStack: 64, fusable: true, color: '#c3a8f0' });
 add({
   id: 'blast_fruit',
   name: 'Blast Fruit',
@@ -117,7 +117,7 @@ add({
   color: '#e8423a',
 });
 
-// Ultrahand parts (also fusable onto tools, TotK style).
+// Tether parts (some can also be bound onto tools).
 const part = (id: string, name: string, color: string, fusable = false, description?: string) =>
   add({ id: `part_${id}`, name, kind: 'part', maxStack: 16, part: id, color, fusable, description });
 part('board', 'Wooden Board', '#b08654');

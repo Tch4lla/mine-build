@@ -1,4 +1,4 @@
-/** Items lying in the world: bob, spin, fall onto blocks, and get picked up (or fused, TotK style). */
+/** Items lying in the world: bob, spin, fall onto blocks, and get picked up (or bound onto a tool with F). */
 import * as THREE from 'three';
 import { IS_SOLID } from '../world/blocks';
 import type { World } from '../world/world';

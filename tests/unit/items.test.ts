@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Inventory } from '../../src/items/inventory';
 import { RECIPES, craft } from '../../src/items/crafting';
-import { applyFuse, breakTime, canFuse, fusedStats, wearFuse } from '../../src/fuse/fuseRecipes';
+import { applyBind, breakTime, canBind, boundStats, wearBind } from '../../src/bind/bindRecipes';
 import { ITEMS, item } from '../../src/items/items';
 
 describe('inventory', () => {
@@ -45,42 +45,42 @@ describe('crafting', () => {
   });
 });
 
-describe('fuse', () => {
+describe('workbench', () => {
   it('turns stick + rock into a Rock Hammer that mines like a pickaxe', () => {
-    const s = fusedStats('stick', 'rock');
+    const s = boundStats('stick', 'rock');
     expect(s.name).toBe('Rock Hammer');
     expect(s.cls).toBe('pickaxe');
-    expect(s.damage).toBeGreaterThan(fusedStats('stick').damage);
+    expect(s.damage).toBeGreaterThan(boundStats('stick').damage);
   });
   it('adds material damage generically', () => {
-    expect(fusedStats('wood_sword', 'flint').damage).toBe(4 + 6);
-    expect(fusedStats('wood_sword', 'flint').name).toBe('Flint Wooden Sword');
+    expect(boundStats('wood_sword', 'flint').damage).toBe(4 + 6);
+    expect(boundStats('wood_sword', 'flint').name).toBe('Flint Wooden Sword');
   });
   it('gives effects from materials', () => {
-    expect(fusedStats('wood_sword', 'ember').effect).toBe('fire');
-    expect(fusedStats('shield', 'part_rocket')).toMatchObject({ name: 'Rocket Shield', effect: 'rocket' });
+    expect(boundStats('wood_sword', 'ember').effect).toBe('fire');
+    expect(boundStats('shield', 'part_rocket')).toMatchObject({ name: 'Rocket Shield', effect: 'rocket' });
   });
   it('rejects non-fusable combos', () => {
-    expect(canFuse('stick', 'dirt')).toBe(false);
-    expect(canFuse('rock', 'flint')).toBe(false);
-    expect(canFuse('shield', 'part_rocket')).toBe(true);
+    expect(canBind('stick', 'dirt')).toBe(false);
+    expect(canBind('rock', 'flint')).toBe(false);
+    expect(canBind('shield', 'part_rocket')).toBe(true);
   });
   it('every fusable item has material stats', () => {
-    for (const d of ITEMS.filter((i) => i.fusable)) expect(canFuse('stick', d.id)).toBe(true);
+    for (const d of ITEMS.filter((i) => i.fusable)) expect(canBind('stick', d.id)).toBe(true);
   });
   it('wears down and breaks off, leaving the base tool', () => {
-    let stack = applyFuse({ id: 'stick', count: 1 }, 'part_rocket');
+    let stack = applyBind({ id: 'stick', count: 1 }, 'part_rocket');
     expect(stack.data?.durability).toBe(3);
     let broke = false;
-    for (let i = 0; i < 3; i++) ({ stack, broke } = wearFuse(stack));
+    for (let i = 0; i < 3; i++) ({ stack, broke } = wearBind(stack));
     expect(broke).toBe(true);
     expect(stack.data).toBeUndefined();
     expect(stack.id).toBe('stick');
   });
   it('mines stone faster with the right tool', () => {
     const hand = breakTime(3, 'pickaxe', null);
-    const pick = breakTime(3, 'pickaxe', fusedStats('wood_pickaxe'));
-    const hammer = breakTime(3, 'pickaxe', fusedStats('stick', 'rock'));
+    const pick = breakTime(3, 'pickaxe', boundStats('wood_pickaxe'));
+    const hammer = breakTime(3, 'pickaxe', boundStats('stick', 'rock'));
     expect(pick).toBeLessThan(hand);
     expect(hammer).toBeLessThan(pick);
   });

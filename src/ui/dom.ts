@@ -2,7 +2,7 @@
 import { item } from '../items/items';
 import type { ItemStack } from '../items/inventory';
 import { iconFor, photoThumb } from '../items/icons';
-import { stackStats } from '../fuse/fuseRecipes';
+import { stackStats } from '../bind/bindRecipes';
 
 type Attrs = Record<string, string | number | boolean | ((e: Event) => void) | undefined>;
 
@@ -73,10 +73,10 @@ export function tooltipText(stack: ItemStack): { name: string; sub: string } {
       parts.push(`Mining ×${stats.breakSpeed} (${stats.cls})`);
     if (stats.effect !== 'none') parts.push(`Effect: ${stats.effect}`);
     if (stack.data?.fuse)
-      parts.push(`Fused: ${item(stack.data.fuse).name} (${stack.data.durability ?? '?'} uses left)`);
+      parts.push(`Bound: ${item(stack.data.fuse).name} (${stack.data.durability ?? '?'} uses left)`);
   }
-  if (def.fusable) parts.push('Can be fused onto tools [V]');
-  if (def.kind === 'part') parts.push('Ultrahand part: right-click to place');
+  if (def.fusable) parts.push('Can be bound onto tools [V]');
+  if (def.kind === 'part') parts.push('Tether part: right-click to place');
   if (def.description) parts.push(def.description);
   return { name: stackName(stack), sub: parts.join('\n') };
 }

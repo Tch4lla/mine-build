@@ -62,20 +62,31 @@ export class Sky {
     );
     this.group.add(this.stars);
 
-    // Blocky clouds from a procedural texture.
+    // Soft, puffy clouds: clusters of radial gradients drawn so they wrap seamlessly.
+    const S = 256;
     const c = document.createElement('canvas');
-    c.width = c.height = 64;
+    c.width = c.height = S;
     const ctx = c.getContext('2d')!;
-    for (let y = 0; y < 64; y++)
-      for (let x = 0; x < 64; x++) {
-        const v = Math.sin(x * 0.35) * Math.cos(y * 0.27) + Math.sin((x + y) * 0.13) + rnd() * 0.6;
-        if (v > 0.9) {
-          ctx.fillStyle = 'rgba(255,255,255,0.9)';
-          ctx.fillRect(x, y, 1, 1);
+    const puff = (x: number, y: number, r: number) => {
+      for (const ox of [-S, 0, S])
+        for (const oy of [-S, 0, S]) {
+          const g = ctx.createRadialGradient(x + ox, y + oy, 0, x + ox, y + oy, r);
+          g.addColorStop(0, 'rgba(255,255,255,0.85)');
+          g.addColorStop(0.6, 'rgba(255,255,255,0.35)');
+          g.addColorStop(1, 'rgba(255,255,255,0)');
+          ctx.fillStyle = g;
+          ctx.beginPath();
+          ctx.arc(x + ox, y + oy, r, 0, Math.PI * 2);
+          ctx.fill();
         }
-      }
+    };
+    for (let k = 0; k < 9; k++) {
+      const cx = rnd() * S;
+      const cy = rnd() * S;
+      for (let j = 0; j < 6; j++) puff(cx + (rnd() - 0.5) * 50, cy + (rnd() - 0.5) * 18, 10 + rnd() * 16);
+    }
     const tex = new THREE.CanvasTexture(c);
-    tex.magFilter = THREE.NearestFilter;
+    tex.magFilter = THREE.LinearFilter;
     tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
     tex.repeat.set(3, 3);
     this.clouds = new THREE.Mesh(

@@ -1,6 +1,8 @@
 /** The player's photo library, stored as Blobs in IndexedDB (shared by all worlds). */
 import { openDB, type IDBPDatabase } from 'idb';
 import { uid } from '../engine/rng';
+import { GAME_SLUG } from '../brand';
+import { copyLegacyDb } from '../save/legacy';
 
 export interface PhotoRecord {
   id: string;
@@ -11,7 +13,8 @@ export interface PhotoRecord {
   createdAt: number;
 }
 
-const DB_NAME = 'mine-build-photos';
+const DB_NAME = `${GAME_SLUG}-photos`;
+const LEGACY_DB_NAME = 'mine-build-photos';
 let dbPromise: Promise<IDBPDatabase> | null = null;
 
 function db(): Promise<IDBPDatabase> {
@@ -19,6 +22,9 @@ function db(): Promise<IDBPDatabase> {
     upgrade(d) {
       d.createObjectStore('photos', { keyPath: 'id' });
     },
+  }).then(async (d) => {
+    await copyLegacyDb(LEGACY_DB_NAME, d, ['photos']);
+    return d;
   });
   return dbPromise;
 }

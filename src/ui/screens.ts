@@ -1,10 +1,10 @@
-/** Modal screens: inventory + crafting, fuse, photo gallery, help. */
+/** Modal screens: inventory + crafting, Workbench (Bind), photo gallery, help. */
 import { h, clear, renderSlot, stackName, tooltipText } from './dom';
 import { HOTBAR_SIZE, INVENTORY_SIZE, canMerge, type Inventory, type ItemStack } from '../items/inventory';
 import { ITEMS, item } from '../items/items';
 import { RECIPES, canCraft, craft } from '../items/crafting';
 import { iconFor } from '../items/icons';
-import { MATERIALS, applyFuse, canFuse, fusedStats, stackStats } from '../fuse/fuseRecipes';
+import { MATERIALS, applyBind, canBind, boundStats, stackStats } from '../bind/bindRecipes';
 import { deletePhoto, listPhotos, type PhotoRecord } from '../photos/photoStore';
 import { captureWebcam, startWebcam } from '../photos/importPhoto';
 import { forgetPhoto, registerThumb } from '../photos/photoTextures';
@@ -19,7 +19,7 @@ export interface ScreenHost {
   importPhotoBlob(blob: Blob, w: number, h: number, name: string): Promise<void>;
 }
 
-export type ScreenName = 'inventory' | 'fuse' | 'gallery' | 'help';
+export type ScreenName = 'inventory' | 'workbench' | 'gallery' | 'help';
 
 abstract class Screen {
   readonly el: HTMLElement;
@@ -256,7 +256,7 @@ class InventoryScreen extends Screen {
 
 // ---------------------------------------------------------------------------------------------
 
-class FuseScreen extends Screen {
+class WorkbenchScreen extends Screen {
   private toolSlot: number | null = null;
   private material: string | null = null;
   private photos: PhotoRecord[] = [];
@@ -280,7 +280,7 @@ class FuseScreen extends Screen {
       h(
         'div',
         { class: 'panel-head' },
-        h('h2', {}, 'Fuse'),
+        h('h2', {}, 'Workbench'),
         h('span', { class: 'small muted' }, 'Attach materials to tools for new powers'),
       ),
     );
@@ -320,12 +320,12 @@ class FuseScreen extends Screen {
         h(
           'p',
           { class: 'muted' },
-          'No fusable materials. Mine stone for rocks, gravel for flint, ores for iron/ember/crystal, slimes for gel.',
+          'No bindable materials. Mine stone for rocks, gravel for flint, ores for iron/ember/crystal, puffballs for gel.',
         ),
       );
     for (const [id, count] of materials) {
       const tool = this.toolSlot !== null ? inv.slots[this.toolSlot] : null;
-      const ok = !tool || canFuse(tool.id, id);
+      const ok = !tool || canBind(tool.id, id);
       ml.append(
         h(
           'button',
@@ -346,8 +346,8 @@ class FuseScreen extends Screen {
     right.append(h('h3', {}, 'Result'));
     if (tool) {
       const before = stackStats(tool)!;
-      const mat = this.material && canFuse(tool.id, this.material) ? this.material : null;
-      const after = mat ? fusedStats(tool.id, mat) : null;
+      const mat = this.material && canBind(tool.id, this.material) ? this.material : null;
+      const after = mat ? boundStats(tool.id, mat) : null;
       const preview = h('div', { class: 'fuse-preview' }, h('img', { src: iconFor({ id: tool.id }) }));
       if (mat)
         preview.append(
@@ -386,7 +386,7 @@ class FuseScreen extends Screen {
           h(
             'p',
             { class: 'small muted' },
-            `Currently fused: ${item(tool.data.fuse).name}. Fusing again replaces it.`,
+            `Currently bound: ${item(tool.data.fuse).name}. Binding again replaces it.`,
           ),
         );
       const actions = h('div', { class: 'row', style: 'margin-top:14px' });
@@ -399,13 +399,13 @@ class FuseScreen extends Screen {
             onclick: () => {
               if (!mat || this.toolSlot === null) return;
               if (!this.host.creative && !inv.remove(mat, 1)) return;
-              inv.slots[this.toolSlot] = applyFuse(inv.slots[this.toolSlot]!, mat);
+              inv.slots[this.toolSlot] = applyBind(inv.slots[this.toolSlot]!, mat);
               inv.changed();
-              this.host.toast(`Fused! ${fusedStats(tool.id, mat).name}`);
+              this.host.toast(`Bound! ${boundStats(tool.id, mat).name}`);
               this.render();
             },
           },
-          'Fuse',
+          'Bind',
         ),
       );
       if (tool.data?.fuse)
@@ -423,7 +423,7 @@ class FuseScreen extends Screen {
                 this.render();
               },
             },
-            'Remove fusion',
+            'Unbind',
           ),
         );
       right.append(actions);
@@ -461,7 +461,7 @@ class FuseScreen extends Screen {
       h(
         'p',
         { class: 'small muted', style: 'margin-top:16px' },
-        'Tip: like in TotK, you can also drop a material [Q], hold a tool and press [F] while looking at it.',
+        'Tip: you can also drop a material [Q], hold a tool and press [F] while looking at it.',
       ),
     );
     panel.append(h('div', { class: 'fuse-layout' }, left, right));
@@ -681,10 +681,10 @@ export const CONTROLS: [string, string][] = [
   ['1-9 / Wheel', 'Choose hotbar slot'],
   ['Q', 'Drop held item'],
   ['E', 'Inventory & crafting'],
-  ['V', 'Fuse screen'],
+  ['V', 'Workbench (Bind materials onto tools)'],
   ['P', 'Photo gallery (upload / camera)'],
-  ['G', 'Ultrahand: grab / release part'],
-  ['F', 'Fuse held part · Fuse ground item onto tool · Sit'],
+  ['G', 'Tether: grab / release part'],
+  ['F', 'Join held part · Bind ground item onto tool · Sit'],
   ['X', 'Detach grabbed part'],
   ['R / T / Y', 'Rotate grabbed part (Shift = reverse)'],
   ['Wheel (holding)', 'Move grabbed part nearer / farther'],
@@ -716,7 +716,7 @@ class HelpScreen extends Screen {
         h(
           'p',
           { class: 'small muted', style: 'max-width:820px;margin-top:14px' },
-          'Ultrahand: place parts with right-click, grab one with G, bring it next to another part until a green line appears, then press F to glue them. Add a Seat to drive: wheels make cars, fans make boats and hovercraft, balloons float, rockets launch. Fuse: put rocks on sticks for hammers, embers for fire, slime for bounce, a rocket on a shield for a rocket jump.',
+          'Tether: place parts with right-click, grab one with G, bring it next to another part until a green line appears, then press F to join them. Add a Seat to drive: wheels make cars, fans make boats and hovercraft, balloons float, rockets launch. Bind: put rocks on sticks for hammers, embers for fire, gel for bounce, a rocket on a shield for a rocket jump.',
         ),
       ),
     );
@@ -749,8 +749,8 @@ export class Screens {
     const screen =
       name === 'inventory'
         ? new InventoryScreen(this.host, close)
-        : name === 'fuse'
-          ? new FuseScreen(this.host, close)
+        : name === 'workbench'
+          ? new WorkbenchScreen(this.host, close)
           : name === 'gallery'
             ? new GalleryScreen(this.host, close)
             : new HelpScreen(this.host, close);

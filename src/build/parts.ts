@@ -1,4 +1,4 @@
-/** Ultrahand part definitions: physics shape, mass, behaviour and a procedural mesh. */
+/** Tether part definitions: physics shape, mass, behaviour and a procedural mesh. */
 import * as THREE from 'three';
 
 export type PartBehavior = 'none' | 'fan' | 'rocket' | 'balloon' | 'wheel' | 'seat' | 'spring' | 'light';

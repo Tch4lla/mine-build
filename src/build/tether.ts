@@ -1,5 +1,5 @@
 /**
- * Ultrahand: grab a contraption, float it in front of you, rotate it, and glue it to others.
+ * Tether: grab a build, float it in front of you, rotate it, and join it to others.
  */
 import * as THREE from 'three';
 import { RAPIER, GROUP, groups, type Physics } from '../physics/physicsWorld';
@@ -17,7 +17,7 @@ const SNAP_DISTANCE = 0.45;
 const HELD_TINT = new THREE.Color(0x2a6cff);
 const TARGET_TINT = new THREE.Color(0x22ff66);
 
-export class Ultrahand {
+export class Tether {
   held: {
     c: Contraption;
     p: PartInstance;
@@ -200,7 +200,7 @@ export class Ultrahand {
   }
 
   /** Glue the held contraption onto the highlighted one. Returns the merged contraption. */
-  fuse(): Contraption | null {
+  join(): Contraption | null {
     const h = this.held;
     const cand = this.candidate;
     if (!h || !cand) return null;

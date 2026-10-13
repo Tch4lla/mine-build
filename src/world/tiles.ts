@@ -27,7 +27,7 @@ export const TILE_NAMES = [
 
 export type TileName = (typeof TILE_NAMES)[number];
 
-export const TILE_PX = 16;
+export const TILE_PX = 32;
 export const ATLAS_COLS = 8;
 export const ATLAS_ROWS = Math.ceil(TILE_NAMES.length / ATLAS_COLS);
 

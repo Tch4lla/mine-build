@@ -23,7 +23,7 @@ async function lookDown(page: Page) {
   });
 }
 
-test('world, Ultrahand, Fuse, photos and saving', async ({ page }) => {
+test('world, Tether, Bind, photos and saving', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
 
@@ -88,8 +88,8 @@ test('world, Ultrahand, Fuse, photos and saving', async ({ page }) => {
   }, brick!);
   expect(broken).toBe(0);
 
-  // 3. Ultrahand: hold a crate next to another one and fuse them into one body.
-  const fused = await page.evaluate(async () => {
+  // 3. Tether: hold a crate next to another one and join them into one body.
+  const joined = await page.evaluate(async () => {
     const g = window.__game!;
     g.player.flying = true;
     g.player.pitch = 0;
@@ -101,31 +101,31 @@ test('world, Ultrahand, Fuse, photos and saving', async ({ page }) => {
     const a = g.contraptions.spawn('crate', anchor);
     a.body.setGravityScale(0, true);
     const b = g.contraptions.spawn('crate', eye.clone().addScaledVector(look, 3));
-    g.ultrahand.grab(b, b.parts[0], b.position, 3, g.player.yaw);
+    g.tether.grab(b, b.parts[0], b.position, 3, g.player.yaw);
     // Wait (up to 8 s, software WebGL is slow) for the held crate to reach the other one.
-    for (let i = 0; i < 80 && !g.ultrahand.candidate; i++) await new Promise((r) => setTimeout(r, 100));
-    const hadCandidate = !!g.ultrahand.candidate;
-    const merged = g.ultrahand.fuse();
+    for (let i = 0; i < 80 && !g.tether.candidate; i++) await new Promise((r) => setTimeout(r, 100));
+    const hadCandidate = !!g.tether.candidate;
+    const merged = g.tether.join();
     return { hadCandidate, parts: merged?.parts.length ?? 0, contraptions: g.contraptions.list.length };
   });
-  expect(fused.hadCandidate).toBe(true);
-  expect(fused.parts).toBe(2);
-  expect(fused.contraptions).toBe(1);
-  await shot(page, '02-fused');
+  expect(joined.hadCandidate).toBe(true);
+  expect(joined.parts).toBe(2);
+  expect(joined.contraptions).toBe(1);
+  await shot(page, '02-joined');
 
-  // 4. Fuse a rock onto a stick.
+  // 4. Bind a rock onto a stick at the Workbench.
   const hammer = await page.evaluate(async () => {
     const g = window.__game!;
     g.inventory.slots[1] = { id: 'stick', count: 1 };
     g.inventory.selected = 1;
     g.inventory.add({ id: 'rock', count: 1 });
-    g.screens.show('fuse');
+    g.screens.show('workbench');
     return true;
   });
   expect(hammer).toBe(true);
   await page.getByRole('button', { name: /^Rock ×/ }).click();
-  await page.getByRole('button', { name: 'Fuse', exact: true }).click();
-  await shot(page, '03-fuse-screen');
+  await page.getByRole('button', { name: 'Bind', exact: true }).click();
+  await shot(page, '03-workbench');
   const stick = await page.evaluate(() => window.__game!.inventory.slots[1]);
   expect(stick?.data?.fuse).toBe('rock');
   await page.evaluate(() => window.__game!.screens.hide());

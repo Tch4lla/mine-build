@@ -48,7 +48,7 @@ class Pix {
   rect(x0: number, y0: number, w: number, h: number, c: number) {
     for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) this.set(x, y, c);
   }
-  /** Darkened 1px outline around opaque pixels (Minecraft-y look). */
+  /** Darkened 1px outline around opaque pixels (chunky sprite look). */
   outline(c = 0x1a1410ff) {
     const copy = this.d.slice();
     for (let y = 0; y < SPRITE; y++)
@@ -150,7 +150,7 @@ const PAINTERS: Record<string, Painter> = {
     p.line(7, 4, 8, 2, hex('#ffb13a'));
   },
   slime: (p) => {
-    p.disc(7.5, 9, 5, (x, y) => (x + y < 13 ? hex('#a6f07a') : hex('#6cc444')));
+    p.disc(7.5, 9, 5, (x, y) => (x + y < 13 ? hex('#ddd0fa') : hex('#a68fdc')));
     p.set(6, 7, 0xffffffff);
     p.set(7, 6, 0xffffffff);
   },

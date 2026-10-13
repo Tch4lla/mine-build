@@ -1,4 +1,4 @@
-/** Slimes (hostile, bouncy) and training dummies (for testing Fuse weapons). */
+/** Puffballs (hostile, bouncy) and training dummies (for testing bound weapons). */
 import * as THREE from 'three';
 import { RAPIER, GROUPS, type Physics } from '../physics/physicsWorld';
 import { GRASS, SAND, SNOW } from '../world/blocks';
@@ -32,27 +32,57 @@ export interface HitResult {
 
 let nextId = 1;
 
-function slimeMesh(size: number): THREE.Object3D {
+/** Puffball: a round, fluffy creature with big eyes and a sprout (faces -Z). */
+function puffballMesh(size: number): THREE.Object3D {
   const g = new THREE.Group();
-  const outer = new THREE.Mesh(
-    new THREE.BoxGeometry(size, size, size),
-    new THREE.MeshLambertMaterial({ color: 0x7ed957, transparent: true, opacity: 0.75 }),
+  const r = size / 2;
+  const body = new THREE.Mesh(
+    new THREE.IcosahedronGeometry(r, 2),
+    new THREE.MeshLambertMaterial({ color: 0xb9a6e8, flatShading: true }),
   );
-  outer.name = 'body';
-  const inner = new THREE.Mesh(
-    new THREE.BoxGeometry(size * 0.55, size * 0.55, size * 0.55),
-    new THREE.MeshLambertMaterial({ color: 0x4fae34 }),
-  );
-  g.add(inner, outer);
-  const eyeMat = new THREE.MeshBasicMaterial({ color: 0x1a2a10 });
-  for (const s of [-1, 1]) {
-    const eye = new THREE.Mesh(new THREE.BoxGeometry(size * 0.16, size * 0.16, 0.02), eyeMat);
-    eye.position.set(s * size * 0.2, size * 0.1, -size / 2 - 0.011);
+  body.name = 'body';
+  g.add(body);
+  // Fluffy tufts around the crown.
+  const tuftMat = new THREE.MeshLambertMaterial({ color: 0xd8cdf6, flatShading: true });
+  for (let i = 0; i < 7; i++) {
+    const a = (i / 7) * Math.PI * 2;
+    const tuft = new THREE.Mesh(new THREE.IcosahedronGeometry(r * 0.32, 0), tuftMat);
+    tuft.position.set(Math.cos(a) * r * 0.62, r * 0.62, Math.sin(a) * r * 0.62);
+    g.add(tuft);
+  }
+  // Big round eyes.
+  const white = new THREE.MeshBasicMaterial({ color: 0xffffff });
+  const pupil = new THREE.MeshBasicMaterial({ color: 0x2a2140 });
+  for (const sx of [-1, 1]) {
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(r * 0.24, 12, 8), white);
+    eye.position.set(sx * r * 0.36, r * 0.12, -r * 0.84);
+    const p = new THREE.Mesh(new THREE.SphereGeometry(r * 0.12, 10, 6), pupil);
+    p.position.set(0, 0, -r * 0.16);
+    eye.add(p);
     g.add(eye);
   }
-  const mouth = new THREE.Mesh(new THREE.BoxGeometry(size * 0.12, size * 0.08, 0.02), eyeMat);
-  mouth.position.set(size * 0.05, -size * 0.15, -size / 2 - 0.011);
-  g.add(mouth);
+  // Sprout on top.
+  const stem = new THREE.Mesh(
+    new THREE.CylinderGeometry(r * 0.04, r * 0.05, r * 0.4, 6),
+    new THREE.MeshLambertMaterial({ color: 0x4f8a5b }),
+  );
+  stem.position.y = r * 1.05;
+  const leaf = new THREE.Mesh(
+    new THREE.SphereGeometry(r * 0.2, 8, 6),
+    new THREE.MeshLambertMaterial({ color: 0x6fbf73, flatShading: true }),
+  );
+  leaf.scale.set(1.6, 0.35, 0.8);
+  leaf.position.set(r * 0.18, r * 1.25, 0);
+  leaf.rotation.z = 0.5;
+  g.add(stem, leaf);
+  // Little feet.
+  const feetMat = new THREE.MeshLambertMaterial({ color: 0x8f7cc4 });
+  for (const sx of [-1, 1]) {
+    const foot = new THREE.Mesh(new THREE.SphereGeometry(r * 0.2, 8, 6), feetMat);
+    foot.scale.set(1, 0.55, 1.3);
+    foot.position.set(sx * r * 0.4, -r * 0.9, -r * 0.15);
+    g.add(foot);
+  }
   return g;
 }
 
@@ -104,14 +134,14 @@ export class Mobs {
         .setLinearDamping(0.3),
     );
     const collider = this.physics.world.createCollider(
-      RAPIER.ColliderDesc.cuboid(size / 2, size / 2, size / 2)
+      RAPIER.ColliderDesc.ball(size / 2)
         .setMass(4 * size)
         .setFriction(0.9)
         .setRestitution(0.2)
         .setCollisionGroups(GROUPS.mob),
       body,
     );
-    const mesh = slimeMesh(size);
+    const mesh = puffballMesh(size);
     return this.add({ kind: 'slime', body, collider, mesh, hp: 8, maxHp: 8, size });
   }
 

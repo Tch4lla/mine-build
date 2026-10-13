@@ -35,12 +35,16 @@ describe('save serialization', () => {
   });
 
   it('rejects files that are not world exports', () => {
-    expect(() => validateBundle({ hello: 1 })).toThrow(/not a mine-build world/);
-    expect(() => validateBundle({ format: 'mine-build-world', version: 999, meta: {}, chunks: {} })).toThrow(
+    expect(() => validateBundle({ hello: 1 })).toThrow(/not a Sōzō world/);
+    expect(() => validateBundle({ format: 'sozo-world', version: 999, meta: {}, chunks: {} })).toThrow(
       /newer version/,
     );
-    expect(validateBundle({ format: 'mine-build-world', version: 1, meta: {}, chunks: {} }).photos).toEqual(
-      [],
+    expect(validateBundle({ format: 'sozo-world', version: 1, meta: {}, chunks: {} }).photos).toEqual([]);
+  });
+
+  it('still imports worlds exported before the rename', () => {
+    expect(validateBundle({ format: 'mine-build-world', version: 1, meta: {}, chunks: {} }).format).toBe(
+      'mine-build-world',
     );
   });
 });

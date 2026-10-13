@@ -4,6 +4,7 @@ import { rleDecode, rleEncode } from '../world/chunk';
 import { uid } from '../engine/rng';
 import { addPhoto, getPhoto } from '../photos/photoStore';
 import {
+  EXPORT_FORMAT,
   SAVE_VERSION,
   base64ToBytes,
   bytesToBase64,
@@ -12,8 +13,11 @@ import {
   type ExportBundle,
   type WorldMeta,
 } from './serialize';
+import { copyLegacyDb } from './legacy';
+import { GAME_SLUG } from '../brand';
 
-const DB_NAME = 'mine-build';
+const DB_NAME = GAME_SLUG;
+const LEGACY_DB_NAME = 'mine-build';
 let dbPromise: Promise<IDBPDatabase> | null = null;
 
 function db(): Promise<IDBPDatabase> {
@@ -23,6 +27,9 @@ function db(): Promise<IDBPDatabase> {
       const chunks = d.createObjectStore('chunks', { keyPath: 'k' });
       chunks.createIndex('world', 'world');
     },
+  }).then(async (d) => {
+    await copyLegacyDb(LEGACY_DB_NAME, d, ['worlds', 'chunks']);
+    return d;
   });
   return dbPromise;
 }
@@ -114,7 +121,7 @@ export async function exportWorld(id: string): Promise<string> {
     if (p) photos.push({ id: p.id, name: p.name, w: p.w, h: p.h, dataUrl: await blobToDataUrl(p.blob) });
   }
   const bundle: ExportBundle = {
-    format: 'mine-build-world',
+    format: EXPORT_FORMAT,
     version: SAVE_VERSION,
     meta: loaded.meta,
     chunks,

@@ -1,17 +1,14 @@
-/** In-game HUD: crosshair, hotbar, hearts, hints, toasts and floating numbers. */
+/** In-game HUD: crosshair, hotbar, energy bar, hints, toasts and floating numbers. */
 import * as THREE from 'three';
 import { h, renderSlot, stackName } from './dom';
 import { HOTBAR_SIZE, type Inventory } from '../items/inventory';
-
-const HEART_FULL = `<svg viewBox="0 0 9 8" class="heart"><path fill="#1a0000" d="M1 0h2v1h1v1h1V1h1V0h2v1h1v3H8v1H7v1H6v1H5v1H4V7H3V6H2V5H1V4H0V1h1z"/><path fill="#e2342c" d="M1 1h2v1h1v1h1V2h1V1h2v3H7v1H6v1H5v1H4V6H3V5H2V4H1z"/><path fill="#ff9a90" d="M1 1h1v1H1z"/></svg>`;
-const HEART_HALF = `<svg viewBox="0 0 9 8" class="heart"><path fill="#1a0000" d="M1 0h2v1h1v1h1V1h1V0h2v1h1v3H8v1H7v1H6v1H5v1H4V7H3V6H2V5H1V4H0V1h1z"/><path fill="#e2342c" d="M1 1h2v1h1v1h0.5v4H4V6H3V5H2V4H1z"/><path fill="#4a1a18" d="M4.5 3h0.5V2h1V1h2v3H7v1H6v1H5v1h-0.5z"/></svg>`;
-const HEART_EMPTY = `<svg viewBox="0 0 9 8" class="heart"><path fill="#1a0000" d="M1 0h2v1h1v1h1V1h1V0h2v1h1v3H8v1H7v1H6v1H5v1H4V7H3V6H2V5H1V4H0V1h1z"/><path fill="#4a1a18" d="M1 1h2v1h1v1h1V2h1V1h2v3H7v1H6v1H5v1H4V6H3V5H2V4H1z"/></svg>`;
 
 export class Hud {
   readonly root: HTMLElement;
   private readonly hotbar: HTMLElement;
   private readonly slots: HTMLElement[] = [];
-  private readonly hearts: HTMLElement;
+  private readonly energy: HTMLElement;
+  private readonly energyFill: HTMLElement;
   private readonly heldName: HTMLElement;
   private readonly target: HTMLElement;
   private readonly hints: HTMLElement;
@@ -56,7 +53,13 @@ export class Hud {
       this.slots.push(s);
       this.hotbar.append(s);
     }
-    this.hearts = h('div', { class: 'hearts' });
+    this.energyFill = h('div', { class: 'energy-fill' });
+    this.energy = h(
+      'div',
+      { class: 'energy', title: 'Energy' },
+      h('span', {}, 'Energy'),
+      h('div', { class: 'energy-track' }, this.energyFill),
+    );
     this.heldName = h('div', { class: 'held-name' });
     this.target = h('div', { class: 'target-info hidden' });
     this.hints = h('div', { class: 'hints' });
@@ -65,7 +68,7 @@ export class Hud {
     this.clickToPlay = h('div', { class: 'click-to-play hidden' }, 'Click to play');
     root.append(
       this.hotbar,
-      this.hearts,
+      this.energy,
       this.heldName,
       this.target,
       this.hints,
@@ -93,13 +96,10 @@ export class Hud {
     const key = visible ? hp : -2;
     if (key === this.lastHearts) return;
     this.lastHearts = key;
-    this.hearts.style.display = visible ? 'flex' : 'none';
-    let html = '';
-    for (let i = 0; i < max / 2; i++) {
-      const v = hp - i * 2;
-      html += v >= 2 ? HEART_FULL : v === 1 ? HEART_HALF : HEART_EMPTY;
-    }
-    this.hearts.innerHTML = html;
+    this.energy.style.display = visible ? 'flex' : 'none';
+    const frac = Math.max(0, Math.min(1, hp / max));
+    this.energyFill.style.width = `${frac * 100}%`;
+    this.energy.classList.toggle('low', frac <= 0.3);
   }
 
   setTarget(text: string): void {

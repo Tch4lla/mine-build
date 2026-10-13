@@ -1,9 +1,9 @@
 import { item } from './items';
 
 export interface StackData {
-  /** Fused material item id. */
+  /** Bound material item id (stored as `fuse` for save compatibility). */
   fuse?: string;
-  /** Remaining durability of a tool (or of its fused material). */
+  /** Remaining durability of a tool (or of its bound material). */
   durability?: number;
   /** Photo for frames / photo blocks / shield emblems. */
   photoId?: string;

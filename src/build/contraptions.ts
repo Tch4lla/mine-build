@@ -1,5 +1,5 @@
 /**
- * Contraptions: Ultrahand builds. Each contraption is ONE Rapier rigid body holding a collider per
+ * Contraptions: Tether builds. Each contraption is ONE Rapier rigid body holding a collider per
  * part (much more stable than chains of joints). Wheels are Rapier ray-cast vehicle wheels.
  */
 import * as THREE from 'three';

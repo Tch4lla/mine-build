@@ -5,6 +5,10 @@ import type { FrameData, PhotoBlockData } from '../photos/photoEntities';
 
 export const SAVE_VERSION = 1;
 
+export const EXPORT_FORMAT = 'sozo-world';
+/** Exports made before the rename to Sōzō. */
+const LEGACY_EXPORT_FORMATS = ['mine-build-world'];
+
 export interface WorldMeta {
   id: string;
   name: string;
@@ -24,7 +28,7 @@ export interface WorldMeta {
 }
 
 export interface ExportBundle {
-  format: 'mine-build-world';
+  format: string;
   version: number;
   meta: WorldMeta;
   /** chunkKey -> base64(RLE block data) */
@@ -59,8 +63,9 @@ export function referencedPhotoIds(meta: WorldMeta): Set<string> {
 
 export function validateBundle(x: unknown): ExportBundle {
   const b = x as ExportBundle;
-  if (!b || b.format !== 'mine-build-world' || typeof b.meta !== 'object' || typeof b.chunks !== 'object') {
-    throw new Error('This file is not a mine-build world export.');
+  const known = b && (b.format === EXPORT_FORMAT || LEGACY_EXPORT_FORMATS.includes(b.format));
+  if (!known || typeof b.meta !== 'object' || typeof b.chunks !== 'object') {
+    throw new Error('This file is not a Sōzō world export.');
   }
   if (b.version > SAVE_VERSION) throw new Error('This world was saved by a newer version of the game.');
   if (!Array.isArray(b.photos)) b.photos = [];
