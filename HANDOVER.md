@@ -117,6 +117,7 @@ npm run build        # static site in dist/
 ## 7. Working conventions
 
 - Develop on `claude/minecraft-crafting-photography-game-32cfy7` and push with `git push -u origin <branch>`. Don't open a PR unless asked.
+- A `main` branch also exists and holds the latest Sōzō code (created from the claude branch). Keep it updated by merging the claude branch into it once work is verified.
 - Commit messages end with the Co-Authored-By and Claude-Session attribution lines. Don't put model IDs in code or commits.
 - Keep prettier, ESLint, typecheck and unit tests clean before pushing. Run the e2e test for UI or gameplay changes.
 - Visual changes: take headless Chromium screenshots and review them before committing.
