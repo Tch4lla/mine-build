@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import { RAPIER, GROUPS, type Physics } from '../physics/physicsWorld';
 import { PARTS, type PartDef } from './parts';
 import { uid } from '../engine/rng';
+import { toonify } from '../view/toon';
 
 export interface PartInstance {
   uid: string;
@@ -139,6 +140,7 @@ export class ContraptionManager {
       const m = o as THREE.Mesh;
       if (m.isMesh) m.material = (m.material as THREE.Material).clone();
     });
+    toonify(mesh);
     mesh.position.copy(pos);
     mesh.quaternion.copy(quat);
     c.group.add(mesh);

@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { RAPIER, GROUPS, type Physics } from '../physics/physicsWorld';
 import { GRASS, SAND, SNOW } from '../world/blocks';
 import type { World } from '../world/world';
+import { toonify } from '../view/toon';
 
 export type MobKind = 'slime' | 'dummy';
 
@@ -177,6 +178,7 @@ export class Mobs {
       wobbleVel: 0,
       attackCooldown: 0,
     };
+    toonify(mob.mesh);
     this.list.push(mob);
     this.byCollider.set(mob.collider.handle, mob);
     this.group.add(mob.mesh);

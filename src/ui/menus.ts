@@ -22,9 +22,18 @@ export interface Settings {
   sensitivity: number;
   slimes: boolean;
   invertY: boolean;
+  /** Ink & Wash outline pass (turn off on slow devices). */
+  outlines: boolean;
 }
 
-const DEFAULTS: Settings = { renderDistance: 6, fov: 75, sensitivity: 1, slimes: true, invertY: false };
+const DEFAULTS: Settings = {
+  renderDistance: 6,
+  fov: 75,
+  sensitivity: 1,
+  slimes: true,
+  invertY: false,
+  outlines: true,
+};
 const KEY = `${GAME_SLUG}-settings`;
 migrateLocalStorageKey('mine-build-settings', KEY);
 
@@ -244,7 +253,7 @@ export function showPause(root: HTMLElement, a: PauseActions): void {
     });
     return [h('label', {}, label), h('div', { class: 'row' }, input, val)];
   };
-  const check = (label: string, key: 'slimes' | 'invertY') => {
+  const check = (label: string, key: 'slimes' | 'invertY' | 'outlines') => {
     const input = h('input', { type: 'checkbox' }) as HTMLInputElement;
     input.checked = s[key];
     input.addEventListener('change', () => {
@@ -279,6 +288,7 @@ export function showPause(root: HTMLElement, a: PauseActions): void {
         ...range('Mouse sensitivity', 'sensitivity', 0.2, 3, 0.1),
         ...check('Puffballs', 'slimes'),
         ...check('Invert mouse Y', 'invertY'),
+        ...check('Ink outlines', 'outlines'),
         h('label', {}, 'Creative mode'),
         creative,
       ),

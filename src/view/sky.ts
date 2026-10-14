@@ -4,16 +4,17 @@ import { mulberry32 } from '../engine/rng';
 
 export const DAY_LENGTH = 720; // seconds for a full day
 
-const DAY_SKY = new THREE.Color(0x87c5ff);
-const DUSK_SKY = new THREE.Color(0xf29a6b);
-const NIGHT_SKY = new THREE.Color(0x0b1026);
-const WATER_FOG = new THREE.Color(0x1d4fa0);
+// Ink & Wash: a warm paper sky by day, indigo ink at night.
+const DAY_SKY = new THREE.Color(0xf2e8d5);
+const DUSK_SKY = new THREE.Color(0xe9b08a);
+const NIGHT_SKY = new THREE.Color(0x1c2233);
+const WATER_FOG = new THREE.Color(0x3b6478);
 
 export class Sky {
   /** 0 = midnight, 0.25 = sunrise, 0.5 = noon, 0.75 = sunset. */
   time = 0.3;
   readonly sun = new THREE.DirectionalLight(0xffffff, 1.6);
-  readonly hemi = new THREE.HemisphereLight(0xcfe8ff, 0x5b4a3a, 0.9);
+  readonly hemi = new THREE.HemisphereLight(0xfff6e6, 0xb3a184, 0.9);
   readonly ambient = new THREE.AmbientLight(0xffffff, 0.25);
   readonly group = new THREE.Group();
   private readonly sunMesh: THREE.Mesh;
@@ -30,14 +31,14 @@ export class Sky {
     scene.add(this.sun, this.sun.target, this.hemi, this.ambient, this.group);
     const disc = (color: number, size: number) => {
       const m = new THREE.Mesh(
-        new THREE.PlaneGeometry(size, size),
+        new THREE.CircleGeometry(size / 2, 48),
         new THREE.MeshBasicMaterial({ color, fog: false, depthWrite: false }),
       );
       m.renderOrder = -1;
       return m;
     };
-    this.sunMesh = disc(0xfff4c0, 30);
-    this.moonMesh = disc(0xe0e6ff, 20);
+    this.sunMesh = disc(0xd8573c, 34); // vermilion sun
+    this.moonMesh = disc(0xf2ead8, 20);
     this.group.add(this.sunMesh, this.moonMesh);
 
     // Stars.
@@ -148,6 +149,9 @@ export class Sky {
     this.clouds.position.set(0, 110 - center.y, 0);
     const map = (this.clouds.material as THREE.MeshBasicMaterial).map!;
     map.offset.set((center.x / 1200) * 3 + this.time * 30, (-center.z / 1200) * 3);
-    (this.clouds.material as THREE.MeshBasicMaterial).color.setScalar(THREE.MathUtils.lerp(1, 0.25, night));
+    // Clouds read as pale washes against the paper sky, and dim to ink-blue at night.
+    (this.clouds.material as THREE.MeshBasicMaterial).color
+      .setHex(0xe4dfd4)
+      .lerp(new THREE.Color(0x2c3448), night);
   }
 }

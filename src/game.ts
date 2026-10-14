@@ -29,6 +29,8 @@ import { processImageFile } from './photos/importPhoto';
 import { registerThumb, setMaxAnisotropy } from './photos/photoTextures';
 import { applyBind, breakTime, canBind, stackStats, wearBind, type BoundStats } from './bind/bindRecipes';
 import { Sky } from './view/sky';
+import { InkPass } from './view/inkPass';
+import { toonGradient } from './engine/atlas';
 import { ViewModel } from './view/viewmodel';
 import { Hud } from './ui/hud';
 import { Screens, type ScreenHost, type ScreenName } from './ui/screens';
@@ -77,6 +79,7 @@ export class Game implements ScreenHost {
   readonly viewmodel: ViewModel;
   readonly hud: Hud;
   readonly screens: Screens;
+  readonly ink: InkPass;
 
   private readonly highlight: THREE.LineSegments;
   private readonly playerLight = new THREE.PointLight(0xfff0c0, 0, 16, 1.4);
@@ -119,6 +122,9 @@ export class Game implements ScreenHost {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.autoClear = false;
+    const buf = this.renderer.getDrawingBufferSize(new THREE.Vector2());
+    this.ink = new InkPass(buf.x, buf.y);
+    this.ink.enabled = settings.outlines;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     setMaxAnisotropy(this.renderer.capabilities.getMaxAnisotropy());
     dom.viewport.append(this.renderer.domElement);
@@ -134,12 +140,20 @@ export class Game implements ScreenHost {
     this.scene.add(this.camera);
     this.input = new Input(this.renderer.domElement);
 
-    const solid = new THREE.MeshLambertMaterial({ map: atlasTexture, vertexColors: true, alphaTest: 0.5 });
-    const water = new THREE.MeshLambertMaterial({
+    // Ink & Wash: flat washes lit in three toon bands; outlines come from the ink pass.
+    const solid = new THREE.MeshToonMaterial({
+      map: atlasTexture,
+      vertexColors: true,
+      alphaTest: 0.5,
+      gradientMap: toonGradient(),
+    });
+    const water = new THREE.MeshToonMaterial({
+      gradientMap: toonGradient(),
       map: atlasTexture,
       vertexColors: true,
       transparent: true,
-      depthWrite: false,
+      // Writes depth so the ink pass outlines the water's surface, not the seabed under it.
+      depthWrite: true,
       side: THREE.DoubleSide,
     });
     this.world = new World(meta.seed, this.physics, solid, water);
@@ -203,6 +217,8 @@ export class Game implements ScreenHost {
     document.addEventListener('pointerlockchange', this.lockListener);
     this.resizeListener = () => {
       this.renderer.setSize(window.innerWidth, window.innerHeight);
+      const size = this.renderer.getDrawingBufferSize(new THREE.Vector2());
+      this.ink.setSize(size.x, size.y);
       this.camera.aspect = window.innerWidth / window.innerHeight;
       this.camera.updateProjectionMatrix();
     };
@@ -458,6 +474,7 @@ export class Game implements ScreenHost {
 
   applySettings(s: Settings): void {
     this.settings = s;
+    this.ink.enabled = s.outlines;
     this.world.renderDistance = s.renderDistance;
     this.camera.fov = s.fov;
     this.camera.updateProjectionMatrix();
@@ -596,7 +613,11 @@ export class Game implements ScreenHost {
 
   private render(): void {
     this.renderer.clear();
-    this.renderer.render(this.scene, this.camera);
+    const fog = this.scene.fog as THREE.Fog;
+    this.ink.setFade(fog.near * 0.6, fog.far * 0.85);
+    const night = this.sky.night;
+    this.ink.setInk(night > 0.5 ? 0x0c0f18 : 0x2a221d, 0.85 - night * 0.3);
+    this.ink.render(this.renderer, this.scene, this.camera);
     this.renderer.clearDepth();
     this.renderer.render(this.viewmodel.scene, this.viewmodel.camera);
   }
@@ -1428,6 +1449,7 @@ export class Game implements ScreenHost {
     for (const [n, f] of this.dropListeners) window.removeEventListener(n, f as EventListener);
     this.dropOverlay?.remove();
     this.world.dispose();
+    this.ink.dispose();
     this.renderer.dispose();
     this.renderer.domElement.remove();
     this.dom.hud.classList.add('hidden');

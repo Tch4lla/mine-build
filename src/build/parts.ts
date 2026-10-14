@@ -218,8 +218,8 @@ export const PARTS: Record<string, PartDef> = {
     activatable: false,
     buildMesh: () => {
       const g = new THREE.Group();
-      g.add(box(0.7, 0.2, 0.7, 0x3a6ad8, 0, -0.05, 0));
-      g.add(box(0.7, 0.55, 0.12, 0x2f58b8, 0, 0.3, 0.3)); // backrest at +Z: the seat faces -Z
+      g.add(box(0.7, 0.2, 0.7, 0x3d5a80, 0, -0.05, 0));
+      g.add(box(0.7, 0.55, 0.12, 0x34506f, 0, 0.3, 0.3)); // backrest at +Z: the seat faces -Z
       g.add(box(0.6, 0.15, 0.6, 0x6b4421, 0, -0.2, 0));
       // Little steering stick in front.
       g.add(box(0.05, 0.3, 0.05, 0x333333, 0, 0.1, -0.3));
