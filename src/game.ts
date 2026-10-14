@@ -618,8 +618,7 @@ export class Game implements ScreenHost {
     const night = this.sky.night;
     this.ink.setInk(night > 0.5 ? 0x0c0f18 : 0x2a221d, 0.85 - night * 0.3);
     this.ink.render(this.renderer, this.scene, this.camera);
-    this.renderer.clearDepth();
-    this.renderer.render(this.viewmodel.scene, this.viewmodel.camera);
+    this.ink.renderOverlay(this.renderer, this.viewmodel.scene, this.viewmodel.camera);
   }
 
   private updateView(dt: number): void {

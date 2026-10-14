@@ -54,7 +54,7 @@ export function renderSlot(el: HTMLElement, stack: ItemStack | null): void {
   if (stats && stack.data?.fuse && Number.isFinite(stats.durability)) {
     const frac = Math.max(0, (stack.data.durability ?? stats.durability) / stats.durability);
     const bar = h('i', {
-      style: `width:${frac * 100}%;background:${frac > 0.5 ? '#6cc04a' : frac > 0.2 ? '#e0c040' : '#e2574c'}`,
+      style: `width:${frac * 100}%;background:${frac > 0.5 ? 'var(--accent-2)' : frac > 0.2 ? 'var(--gold)' : 'var(--accent)'}`,
     });
     el.append(h('div', { class: 'dur' }, bar));
   }

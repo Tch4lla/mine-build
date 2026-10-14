@@ -1,14 +1,23 @@
-/** Inventory icons (data URLs) and 3D item models built from block tiles and pixel sprites. */
+/**
+ * Inventory icons (SVG data URLs) and 3D item models.
+ *
+ * Items are vector ink drawings (see inkArt.ts): the icon is the drawing with an ink stroke, and
+ * the 3D model is the same drawing extruded into thin layered slabs. Blocks use an isometric cube
+ * built from their atlas tiles, outlined in ink.
+ */
 import * as THREE from 'three';
+import { SVGLoader } from 'three/examples/jsm/loaders/SVGLoader.js';
 import { BLOCKS } from '../world/blocks';
 import { ATLAS_COLS, TILE_PX, tileIndex, tileUV } from '../world/tiles';
+import { toonGradient } from '../engine/atlas';
 import { item } from './items';
 import type { ItemStack } from './inventory';
-import { SPRITE, itemSprite, spriteRGBA, type Sprite } from './pixelArt';
+import { C, itemSvg, svgDataUrl } from './inkArt';
 
 let atlasCanvas: HTMLCanvasElement | null = null;
 let atlasTexture: THREE.Texture | null = null;
 const iconCache = new Map<string, string>();
+const tileUrls = new Map<string, string>();
 /** Photo thumbnails (data/object URLs) keyed by photo id, provided by the photo system. */
 const photoThumbs = new Map<string, string>();
 
@@ -25,62 +34,59 @@ export function photoThumb(photoId: string | undefined): string | undefined {
   return photoId ? photoThumbs.get(photoId) : undefined;
 }
 
-function tileRect(name: string): [number, number] {
-  const i = tileIndex(name);
-  return [(i % ATLAS_COLS) * TILE_PX, Math.floor(i / ATLAS_COLS) * TILE_PX];
-}
-
-function drawSprite(ctx: CanvasRenderingContext2D, s: Sprite, x: number, y: number, scale: number): void {
-  for (let i = 0; i < SPRITE * SPRITE; i++) {
-    const [r, g, b, a] = spriteRGBA(s, i);
-    if (!a) continue;
-    ctx.fillStyle = `rgba(${r},${g},${b},${a / 255})`;
-    ctx.fillRect(x + (i % SPRITE) * scale, y + Math.floor(i / SPRITE) * scale, scale, scale);
+/** One atlas tile as a PNG data URL (embedded in block icons). */
+function tileUrl(name: string): string {
+  let url = tileUrls.get(name);
+  if (url) return url;
+  const c = document.createElement('canvas');
+  c.width = c.height = TILE_PX;
+  if (atlasCanvas) {
+    const i = tileIndex(name);
+    const sx = (i % ATLAS_COLS) * TILE_PX;
+    const sy = Math.floor(i / ATLAS_COLS) * TILE_PX;
+    c.getContext('2d')!.drawImage(atlasCanvas, sx, sy, TILE_PX, TILE_PX, 0, 0, TILE_PX, TILE_PX);
   }
+  url = c.toDataURL();
+  tileUrls.set(name, url);
+  return url;
 }
 
+/** An isometric cube: three tile faces, toon-shaded, with ink edges. */
 function blockIcon(blockId: number): string {
   const b = BLOCKS[blockId];
-  const c = document.createElement('canvas');
-  c.width = c.height = 48;
-  const ctx = c.getContext('2d')!;
-  ctx.imageSmoothingEnabled = false;
-  if (!atlasCanvas) return c.toDataURL();
-  const face = (tile: string, m: [number, number, number, number, number, number], tint: number) => {
-    const [sx, sy] = tileRect(tile);
-    ctx.save();
-    ctx.setTransform(...m);
-    ctx.drawImage(atlasCanvas!, sx, sy, TILE_PX, TILE_PX, 0, 0, TILE_PX, TILE_PX);
-    ctx.fillStyle = `rgba(0,0,0,${1 - tint})`;
-    ctx.globalCompositeOperation = 'source-atop';
-    ctx.fillRect(0, 0, TILE_PX, TILE_PX);
-    ctx.restore();
-  };
-  const s = (1.3 * 16) / TILE_PX;
-  // Isometric projection: top, left and right faces.
-  face(b.tiles.top, [s, s * 0.5, -s, s * 0.5, 24, 3], 1);
-  face(b.tiles.side, [s, s * 0.5, 0, s * 1.1, 3, 13.5], 0.8);
-  face(b.tiles.side, [s, -s * 0.5, 0, s * 1.1, 24, 24], 0.62);
-  return c.toDataURL();
+  // Each face maps the unit square onto a parallelogram (SVG matrix a b c d e f).
+  const face = (tile: string, m: number[], shade: number) =>
+    `<image href="${tileUrl(tile)}" width="1" height="1" preserveAspectRatio="none" transform="matrix(${m.join(' ')})"/>` +
+    (shade
+      ? `<polygon fill="${C.ink}" fill-opacity="${shade}" points="${[
+          [m[4], m[5]],
+          [m[4] + m[0], m[5] + m[1]],
+          [m[4] + m[0] + m[2], m[5] + m[1] + m[3]],
+          [m[4] + m[2], m[5] + m[3]],
+        ].join(' ')}"/>`
+      : '');
+  const body =
+    face(b.tiles.top, [40, -20, 40, 20, 10, 26], 0) +
+    face(b.tiles.side, [40, 20, 0, 48, 10, 26], 0.14) +
+    face(b.tiles.side, [40, -20, 0, 48, 50, 46], 0.3);
+  const lines =
+    `<g fill="none" stroke="${C.ink}" stroke-width="4.5" stroke-linejoin="round" stroke-linecap="round">` +
+    `<polygon points="50,6 90,26 90,74 50,94 10,74 10,26"/>` +
+    `<polyline points="10,26 50,46 90,26"/><line x1="50" y1="46" x2="50" y2="94"/></g>`;
+  return svgDataUrl(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="-6 -6 112 112">${body}${lines}</svg>`);
 }
 
-function spriteIcon(id: string, overlay?: string): string {
-  const c = document.createElement('canvas');
-  c.width = c.height = 48;
-  const ctx = c.getContext('2d')!;
-  drawSprite(ctx, itemSprite(id), 0, 0, 3);
-  if (overlay) drawSprite(ctx, itemSprite(overlay), 22, 0, 1.6);
-  return c.toDataURL();
-}
-
-/** Data URL icon for a stack (bound tools get a small material badge). */
+/** Data URL icon for a stack (bound tools show their material at the binding point). */
 export function iconFor(stack: ItemStack | { id: string; data?: ItemStack['data'] }): string {
   const def = item(stack.id);
   const fuse = stack.data?.fuse;
   const key = `${stack.id}|${fuse ?? ''}`;
   let url = iconCache.get(key);
   if (!url) {
-    url = def.block !== undefined ? blockIcon(def.block) : spriteIcon(stack.id, fuse);
+    url =
+      def.block !== undefined && !def.tool
+        ? blockIcon(def.block)
+        : svgDataUrl(itemSvg(stack.id, { fuse, stroke: true }));
     iconCache.set(key, url);
   }
   return url;
@@ -89,113 +95,53 @@ export function iconFor(stack: ItemStack | { id: string; data?: ItemStack['data'
 // ---------------------------------------------------------------------------------------------
 // 3D models
 
-const spriteGeoCache = new Map<string, THREE.BufferGeometry>();
-
-/** Extrudes a sprite into a thin voxel model, 1 unit wide, centred on the origin. */
-export function spriteGeometry(id: string): THREE.BufferGeometry {
-  let g = spriteGeoCache.get(id);
-  if (g) return g;
-  const s = itemSprite(id);
-  const pos: number[] = [];
-  const col: number[] = [];
-  const nor: number[] = [];
-  const px = 1 / SPRITE;
-  const depth = px;
-  const opaque = (x: number, y: number) =>
-    x >= 0 && y >= 0 && x < SPRITE && y < SPRITE && (s[y * SPRITE + x] & 255) > 0;
-  const quad = (v: number[][], n: number[], c: number[]) => {
-    for (const i of [0, 1, 2, 0, 2, 3]) {
-      pos.push(...v[i]);
-      nor.push(...n);
-      col.push(...c);
-    }
-  };
-  for (let y = 0; y < SPRITE; y++)
-    for (let x = 0; x < SPRITE; x++) {
-      if (!opaque(x, y)) continue;
-      const [r, gg, b] = spriteRGBA(s, y * SPRITE + x);
-      const c = [r / 255, gg / 255, b / 255].map((v) => Math.pow(v, 2.2));
-      const x0 = x * px - 0.5;
-      const x1 = x0 + px;
-      const y1 = 0.5 - y * px;
-      const y0 = y1 - px;
-      const z0 = -depth / 2;
-      const z1 = depth / 2;
-      quad(
-        [
-          [x0, y0, z1],
-          [x1, y0, z1],
-          [x1, y1, z1],
-          [x0, y1, z1],
-        ],
-        [0, 0, 1],
-        c,
-      );
-      quad(
-        [
-          [x1, y0, z0],
-          [x0, y0, z0],
-          [x0, y1, z0],
-          [x1, y1, z0],
-        ],
-        [0, 0, -1],
-        c,
-      );
-      const dc = c.map((v) => v * 0.7);
-      if (!opaque(x - 1, y))
-        quad(
-          [
-            [x0, y0, z0],
-            [x0, y0, z1],
-            [x0, y1, z1],
-            [x0, y1, z0],
-          ],
-          [-1, 0, 0],
-          dc,
-        );
-      if (!opaque(x + 1, y))
-        quad(
-          [
-            [x1, y0, z1],
-            [x1, y0, z0],
-            [x1, y1, z0],
-            [x1, y1, z1],
-          ],
-          [1, 0, 0],
-          dc,
-        );
-      if (!opaque(x, y - 1))
-        quad(
-          [
-            [x0, y1, z1],
-            [x1, y1, z1],
-            [x1, y1, z0],
-            [x0, y1, z0],
-          ],
-          [0, 1, 0],
-          dc,
-        );
-      if (!opaque(x, y + 1))
-        quad(
-          [
-            [x0, y0, z0],
-            [x1, y0, z0],
-            [x1, y0, z1],
-            [x0, y0, z1],
-          ],
-          [0, -1, 0],
-          dc,
-        );
-    }
-  g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
-  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-  spriteGeoCache.set(id, g);
-  return g;
+interface Layer {
+  geometry: THREE.BufferGeometry;
+  color: THREE.Color;
 }
 
-const spriteMaterial = new THREE.MeshLambertMaterial({ vertexColors: true });
+const DEPTH = 0.05;
+/** Each later shape is a little thicker, so it sits on top of earlier ones from both sides. */
+const LAYER_STEP = 0.004;
+const layerCache = new Map<string, Layer[]>();
+const toonMaterials = new Map<number, THREE.MeshToonMaterial>();
+const svgLoader = new SVGLoader();
+
+function toonMaterial(color: THREE.Color): THREE.MeshToonMaterial {
+  const key = color.getHex();
+  let m = toonMaterials.get(key);
+  if (!m) {
+    m = new THREE.MeshToonMaterial({ color, gradientMap: toonGradient() });
+    toonMaterials.set(key, m);
+  }
+  return m;
+}
+
+/** The item's drawing as extruded layers, 1 unit wide, centred on the origin. */
+export function itemLayers(id: string, fuse?: string): Layer[] {
+  const key = `${id}|${fuse ?? ''}`;
+  let layers = layerCache.get(key);
+  if (layers) return layers;
+  layers = [];
+  const data = svgLoader.parse(itemSvg(id, { fuse }));
+  let i = 0;
+  for (const path of data.paths) {
+    const fill = (path.userData?.style as { fill?: string } | undefined)?.fill;
+    if (fill === 'none') continue;
+    for (const shape of path.toShapes()) {
+      const depth = DEPTH + i * LAYER_STEP * 2;
+      const g = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: false, curveSegments: 8 });
+      // SVG y points down and the box is 0–100: flip and centre it. Flipping z as well keeps
+      // the triangle winding (and so the normals) facing outwards.
+      g.translate(-50, -50, -depth / 2);
+      g.scale(0.01, -0.01, -1);
+      layers.push({ geometry: g, color: path.color.clone() });
+      i++;
+    }
+  }
+  layerCache.set(key, layers);
+  return layers;
+}
 
 function blockGeometry(blockId: number): THREE.BufferGeometry {
   const b = BLOCKS[blockId];
@@ -219,26 +165,24 @@ export function itemModel(
   photoTexture?: THREE.Texture,
 ): THREE.Object3D {
   const def = item(stack.id);
-  if (def.block !== undefined && atlasTexture) {
-    const mat = new THREE.MeshLambertMaterial({ map: atlasTexture, alphaTest: 0.5, transparent: false });
+  if (def.block !== undefined && !def.tool && atlasTexture) {
+    const mat = new THREE.MeshToonMaterial({
+      map: atlasTexture,
+      alphaTest: 0.5,
+      gradientMap: toonGradient(),
+    });
     return new THREE.Mesh(blockGeometry(def.block), mat);
   }
   const group = new THREE.Group();
-  group.add(new THREE.Mesh(spriteGeometry(stack.id), spriteMaterial));
-  const fuse = stack.data?.fuse;
-  if (fuse && def.tool) {
-    const [ax, ay] = def.tool.fuseAnchor;
-    const m = new THREE.Mesh(spriteGeometry(fuse), spriteMaterial);
-    m.scale.setScalar(0.55);
-    m.position.set((ax + 0.5) / SPRITE - 0.5, 0.5 - (ay + 0.5) / SPRITE, 0.04);
-    group.add(m);
-  }
+  const layers = itemLayers(stack.id, def.tool ? stack.data?.fuse : undefined);
+  for (const l of layers) group.add(new THREE.Mesh(l.geometry, toonMaterial(l.color)));
   if (photoTexture && (stack.id === 'shield' || stack.id === 'photo_frame' || stack.id === 'photo_block')) {
     const plane = new THREE.Mesh(
       new THREE.PlaneGeometry(0.5, 0.5),
-      new THREE.MeshLambertMaterial({ map: photoTexture }),
+      new THREE.MeshToonMaterial({ map: photoTexture, gradientMap: toonGradient() }),
     );
-    plane.position.set(0, stack.id === 'shield' ? 0.06 : 0, 0.04);
+    const front = DEPTH / 2 + layers.length * LAYER_STEP + 0.005;
+    plane.position.set(0, stack.id === 'shield' ? -0.05 : 0, front);
     group.add(plane);
   }
   return group;

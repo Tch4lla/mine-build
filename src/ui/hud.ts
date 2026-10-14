@@ -39,9 +39,10 @@ export class Hud {
     this.breakRing.setAttribute('cy', '18');
     this.breakRing.setAttribute('r', '15');
     this.breakRing.setAttribute('fill', 'none');
-    this.breakRing.setAttribute('stroke', 'rgba(255,255,255,0.85)');
-    this.breakRing.setAttribute('stroke-width', '3');
+    this.breakRing.setAttribute('stroke', '#d8573c');
+    this.breakRing.setAttribute('stroke-width', '3.5');
     this.breakRing.setAttribute('stroke-dasharray', '94.25');
+    this.breakRing.setAttribute('stroke-linecap', 'round');
     this.breakRing.setAttribute('transform', 'rotate(-90 18 18)');
     this.breakSvg.append(this.breakRing);
     this.breakSvg.style.display = 'none';

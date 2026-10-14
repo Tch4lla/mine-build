@@ -49,7 +49,8 @@ const fragmentShader = /* glsl */ `
   float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
 
   void main() {
-    vec3 col = texture2D(tColor, vUv).rgb;
+    vec4 src = texture2D(tColor, vUv);
+    vec3 col = src.rgb;
     float d0 = rawDepth(vUv);
     float z0 = linearDepth(d0);
 
@@ -70,6 +71,14 @@ const fragmentShader = /* glsl */ `
       if (d0 < 1.0 && d < 1.0) crease = max(crease, 1.0 - dot(n0, normalAt(uv)));
     }
     float edge = max(step(0.035, depthJump), step(0.25, crease));
+    #ifdef OVERLAY
+    // Held item: lines only where the item is (its silhouette against the empty background
+    // included), blended over the finished frame.
+    float a = max(src.a, edge * strength);
+    gl_FragColor = vec4(mix(col, ink, edge * strength / max(a, 0.001)), a);
+    #include <colorspace_fragment>
+    return;
+    #endif
     // Fade lines out with distance.
     edge *= 1.0 - smoothstep(fadeStart, fadeEnd, z0);
     col = mix(col, ink, edge * strength);
@@ -92,10 +101,15 @@ export class InkPass {
   private target: THREE.WebGLRenderTarget;
   private readonly quadScene = new THREE.Scene();
   private readonly quadCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  private overlayTarget: THREE.WebGLRenderTarget;
   private readonly material: THREE.ShaderMaterial;
+  private readonly overlayMaterial: THREE.ShaderMaterial;
+  private readonly quad: THREE.Mesh;
+  private readonly clearColor = new THREE.Color();
 
   constructor(width: number, height: number) {
     this.target = this.makeTarget(width, height);
+    this.overlayTarget = this.makeTarget(width, height);
     this.material = new THREE.ShaderMaterial({
       vertexShader,
       fragmentShader,
@@ -115,9 +129,14 @@ export class InkPass {
         grain: { value: 0.045 },
       },
     });
-    const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.material);
-    quad.frustumCulled = false;
-    this.quadScene.add(quad);
+    this.overlayMaterial = this.material.clone();
+    this.overlayMaterial.defines = { OVERLAY: 1 };
+    this.overlayMaterial.transparent = true;
+    this.overlayMaterial.uniforms.ink.value = new THREE.Color(0x2a221d);
+    this.overlayMaterial.uniforms.strength.value = 0.9;
+    this.quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.material);
+    this.quad.frustumCulled = false;
+    this.quadScene.add(this.quad);
   }
 
   private makeTarget(w: number, h: number): THREE.WebGLRenderTarget {
@@ -128,8 +147,11 @@ export class InkPass {
 
   setSize(width: number, height: number): void {
     this.target.dispose();
+    this.overlayTarget.dispose();
     this.target = this.makeTarget(width, height);
+    this.overlayTarget = this.makeTarget(width, height);
     this.material.uniforms.texel.value.set(1 / width, 1 / height);
+    this.overlayMaterial.uniforms.texel.value.set(1 / width, 1 / height);
   }
 
   /** Distance over which outlines fade out (follow the fog so distant lines dissolve into the wash). */
@@ -153,18 +175,51 @@ export class InkPass {
     renderer.setRenderTarget(this.target);
     renderer.clear();
     renderer.render(scene, camera);
-    const u = this.material.uniforms;
-    u.tColor.value = this.target.texture;
-    u.tDepth.value = this.target.depthTexture;
+    this.composite(renderer, this.material, this.target, camera);
+  }
+
+  /**
+   * Draws a scene (the first-person held item) over what is already on screen, outlined in ink.
+   * No grain, vignette or distance fade: those were applied to the world underneath.
+   */
+  renderOverlay(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camera: THREE.PerspectiveCamera): void {
+    if (!this.enabled) {
+      renderer.setRenderTarget(null);
+      renderer.clearDepth();
+      renderer.render(scene, camera);
+      return;
+    }
+    renderer.getClearColor(this.clearColor);
+    const alpha = renderer.getClearAlpha();
+    renderer.setRenderTarget(this.overlayTarget);
+    renderer.setClearColor(0x000000, 0);
+    renderer.clear();
+    renderer.render(scene, camera);
+    renderer.setClearColor(this.clearColor, alpha);
+    this.composite(renderer, this.overlayMaterial, this.overlayTarget, camera);
+  }
+
+  private composite(
+    renderer: THREE.WebGLRenderer,
+    material: THREE.ShaderMaterial,
+    target: THREE.WebGLRenderTarget,
+    camera: THREE.PerspectiveCamera,
+  ): void {
+    const u = material.uniforms;
+    u.tColor.value = target.texture;
+    u.tDepth.value = target.depthTexture;
     u.near.value = camera.near;
     u.far.value = camera.far;
     u.projInv.value.copy(camera.projectionMatrixInverse);
+    this.quad.material = material;
     renderer.setRenderTarget(null);
     renderer.render(this.quadScene, this.quadCamera);
   }
 
   dispose(): void {
     this.target.dispose();
+    this.overlayTarget.dispose();
     this.material.dispose();
+    this.overlayMaterial.dispose();
   }
 }

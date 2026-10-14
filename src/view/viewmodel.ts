@@ -4,6 +4,7 @@ import type { ItemStack } from '../items/inventory';
 import { item } from '../items/items';
 import { itemModel } from '../items/icons';
 import { photoTexture } from '../photos/photoTextures';
+import { toonify } from './toon';
 
 export class ViewModel {
   readonly scene = new THREE.Scene();
@@ -46,7 +47,7 @@ export class ViewModel {
         m.scale.setScalar(0.24);
         m.rotation.set(0.1, 0.75, 0);
       } else if (def.kind === 'tool' && def.tool?.cls !== 'shield') {
-        // Mirror the sprite so the handle sits in the bottom-right, head pointing up-left.
+        // Mirror the drawing so the handle sits in the bottom-right, head pointing up-left.
         m.scale.setScalar(0.3);
         m.rotation.set(0.1, Math.PI - 0.6, 0.15);
         m.position.set(0, 0.06, 0);
@@ -97,8 +98,8 @@ export class ViewModel {
 /** The empty-handed view: a rounded work glove with a vermilion cuff, fingers pointing forward. */
 function glove(): THREE.Object3D {
   const g = new THREE.Group();
-  const cloth = new THREE.MeshLambertMaterial({ color: 0x2f5d62 });
-  const cuffMat = new THREE.MeshLambertMaterial({ color: 0xe4572e });
+  const cloth = new THREE.MeshLambertMaterial({ color: 0x3f7f86 });
+  const cuffMat = new THREE.MeshLambertMaterial({ color: 0xd8573c });
   const cuff = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.078, 0.07, 14), cuffMat);
   cuff.rotation.x = Math.PI / 2;
   cuff.position.z = 0.13;
@@ -119,5 +120,6 @@ function glove(): THREE.Object3D {
   g.rotation.set(0.15, 0.25, -0.2);
   g.scale.setScalar(0.62);
   g.position.set(0.02, 0.04, -0.12);
+  toonify(g);
   return g;
 }

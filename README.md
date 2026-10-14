@@ -47,7 +47,7 @@ Other scripts:
 
 ## How it is built
 
-- **Rendering**: [Three.js](https://threejs.org), in an "Ink & Wash" style. Chunks are 16×16×128 with hidden faces culled and per-vertex ambient occlusion (`src/world/chunkMesher.ts`). Blocks are flat ink-colour washes (`src/engine/atlas.ts`) lit in three toon bands, and a post-process draws ink outlines from the depth buffer and adds paper grain (`src/view/inkPass.ts`). `style-lab.html` compares this with other candidate looks.
+- **Rendering**: [Three.js](https://threejs.org), in an "Ink & Wash" style. Chunks are 16×16×128 with hidden faces culled and per-vertex ambient occlusion (`src/world/chunkMesher.ts`). Blocks are flat ink-colour washes (`src/engine/atlas.ts`) lit in three toon bands, and a post-process draws ink outlines from the depth buffer and adds paper grain (`src/view/inkPass.ts`). Items are small vector ink drawings (`src/items/inkArt.ts`) that become both the inventory icons and, extruded, the 3D held and dropped models. `style-lab.html` compares this with other candidate looks.
 - **Physics**: [Rapier](https://rapier.rs). Terrain near the player becomes voxel colliders. The player uses a kinematic character controller. Each build is **one rigid body with a collider per part**, which is far more stable than chains of joints, and wheels are ray-cast vehicle wheels (`src/build/contraptions.ts`).
 - **Tether**: `src/build/tether.ts` holds a build with a velocity spring and finds the nearest part on another build within 0.45 m using Rapier contact queries. Joining closes the gap and merges the two bodies.
 - **Bind**: `src/bind/bindRecipes.ts` is a data table of material stats plus special combinations, and it is fully unit tested.
