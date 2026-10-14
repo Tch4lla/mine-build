@@ -16,8 +16,11 @@ export function rabbit(): THREE.Group {
   // Feet and front paws.
   g.add(blob(COAT, 0.1, [0.24, 0.06, 0.06], [1, 0.6, 2.2]));
   g.add(blob(COAT, 0.1, [-0.24, 0.06, 0.06], [1, 0.6, 2.2]));
-  g.add(blob(CREAM, 0.075, [0.12, 0.08, 0.34], [1, 0.85, 1.4]));
-  g.add(blob(CREAM, 0.075, [-0.12, 0.08, 0.34], [1, 0.85, 1.4]));
+  // Front legs: short and sturdy, rising out of the chest so the paws are joined to the body.
+  for (const side of [1, -1]) {
+    g.add(capsule(CREAM, 0.07, 0.2, [side * 0.12, 0.22, 0.3], [1, 1, 1], [0.18, 0, 0]));
+    g.add(blob(CREAM, 0.08, [side * 0.12, 0.07, 0.34], [1, 0.75, 1.3]));
+  }
   // Tail.
   g.add(blob('#f8f2e8', 0.13, [0, 0.36, -0.58]));
   // Head.
