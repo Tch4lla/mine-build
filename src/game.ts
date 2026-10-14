@@ -3,9 +3,28 @@ import * as THREE from 'three';
 import { Physics, RAPIER, GROUP, groups } from './physics/physicsWorld';
 import { Input } from './engine/input';
 import { World } from './world/world';
-import { AIR, BEDROCK, BLOCKS, GRASS, IS_SOLID, PHOTO, SAND, SNOW, LEAVES, isWater } from './world/blocks';
+import {
+  AIR,
+  BEDROCK,
+  BLOCKS,
+  STONE as STONE_ID,
+  blockArt,
+  blockByKey,
+  setBlockArt,
+  GRASS,
+  IS_SOLID,
+  PHOTO,
+  SAND,
+  SNOW,
+  LEAVES,
+  isWater,
+} from './world/blocks';
 import { raycastVoxels, type VoxelHit } from './world/raycast';
 import { SEA_LEVEL } from './world/terrain';
+import { ATLAS_COLS, TILE_PX, tileIndex } from './world/tiles';
+import { refreshBlockUVs } from './world/chunkMesher';
+import { clearIconCache } from './items/icons';
+import { OPEN, TOP, facingFromYaw, type BlockShape } from './world/shapes';
 import { Player } from './player/player';
 import { Inventory, HOTBAR_SIZE, type ItemStack } from './items/inventory';
 import { item } from './items/items';
@@ -473,6 +492,14 @@ export class Game implements ScreenHost {
   }
 
   applySettings(s: Settings): void {
+    if (s.art !== blockArt()) {
+      setBlockArt(s.art);
+      refreshBlockUVs();
+      clearIconCache();
+      this.world.remeshAll();
+      this.hud.renderHotbar(this.inventory);
+      this.viewmodel.refresh();
+    }
     this.settings = s;
     this.ink.enabled = s.outlines;
     this.world.renderDistance = s.renderDistance;
@@ -1022,6 +1049,17 @@ export class Game implements ScreenHost {
     const b = BLOCKS[id];
     // Neighbouring water flows in and unsupported sand falls via BlockUpdates.
     this.world.setBlock(x, y, z, AIR);
+    // A door is two blocks: take the other half with it (it drops nothing of its own).
+    if (b.shape === 'door') {
+      const oy = this.world.getBlockState(x, y, z) & TOP ? -1 : 1;
+      const other =
+        this.world.getBlock(x, y + oy, z) === id
+          ? y + oy
+          : this.world.getBlock(x, y - oy, z) === id
+            ? y - oy
+            : null;
+      if (other !== null) this.world.setBlock(x, other, z, AIR);
+    }
     this.particles.burst(new THREE.Vector3(x + 0.5, y + 0.5, z + 0.5), tileColor(b.tiles.side), 16, {
       speed: 3,
     });
@@ -1154,6 +1192,16 @@ export class Game implements ScreenHost {
         return;
       }
     }
+    // Doors, trapdoors and gates open and close (Shift places against them instead).
+    if (
+      justPressed &&
+      t?.kind === 'block' &&
+      OPENABLE.has(BLOCKS[t.hit.id].shape ?? 'cube') &&
+      !this.input.isDown('ShiftLeft')
+    ) {
+      this.toggleOpen(t.hit.x, t.hit.y, t.hit.z);
+      return;
+    }
     if (!held) return;
     const def = item(held.id);
     const slot = this.inventory.selected;
@@ -1168,7 +1216,13 @@ export class Game implements ScreenHost {
         const y = t.hit.y + t.hit.ny;
         const z = t.hit.z + t.hit.nz;
         if (!this.canPlaceAt(x, y, z)) return;
-        this.world.setBlock(x, y, z, def.block);
+        const shape = BLOCKS[def.block].shape ?? 'cube';
+        const state = placementState(shape, this.player.yaw, t.hit.ny, t.point.y - Math.floor(t.point.y));
+        if (shape === 'door') {
+          if (!this.canPlaceAt(x, y + 1, z)) return;
+          this.world.setBlock(x, y + 1, z, def.block, state | TOP);
+        }
+        this.world.setBlock(x, y, z, def.block, state);
         this.world.flushDirtyNear(new THREE.Vector3(x, y, z));
         this.viewmodel.doSwing();
         this.placeCooldown = 0.22;
@@ -1271,6 +1325,19 @@ export class Game implements ScreenHost {
       default:
         return;
     }
+  }
+
+  /** Opens or closes a door (both halves), trapdoor or gate. */
+  private toggleOpen(x: number, y: number, z: number): void {
+    const id = this.world.getBlock(x, y, z);
+    const state = this.world.getBlockState(x, y, z) ^ OPEN;
+    this.world.setBlock(x, y, z, id, state);
+    if (BLOCKS[id].shape === 'door') {
+      const oy = state & TOP ? -1 : 1;
+      if (this.world.getBlock(x, y + oy, z) === id) this.world.setBlock(x, y + oy, z, id, state ^ TOP);
+    }
+    this.world.flushDirtyNear(new THREE.Vector3(x, y, z));
+    this.viewmodel.doSwing();
   }
 
   private canPlaceAt(x: number, y: number, z: number): boolean {
@@ -1498,39 +1565,120 @@ export class Game implements ScreenHost {
     return this.world.setBlock(info.x, info.y, info.z, info.id, state);
   }
 
+  /** Fills the inventory with library blocks whose category or name matches `query`. */
+  debugGiveLibrary(query = ''): number {
+    const q = query.toLowerCase();
+    const picks = BLOCKS.filter(
+      (b) => b.lib && (b.category!.toLowerCase().includes(q) || b.name.toLowerCase().includes(q)),
+    ).slice(0, this.inventory.slots.length);
+    picks.forEach((b, i) => (this.inventory.slots[i] = { id: b.key, count: b.lib!.stack }));
+    this.hud.renderHotbar(this.inventory);
+    return picks.length;
+  }
+
+  /**
+   * Builds every library block (or those whose category matches `category`) in rows on a paper-
+   * pale floor in front of the player, one category per row group, for reviewing them in the world.
+   */
+  debugShowcase(category = ''): number {
+    const blocks = BLOCKS.filter((b) => b.lib && b.category!.toLowerCase().includes(category.toLowerCase()));
+    const floor = blockByKey('smooth_stone')?.id ?? STONE_ID;
+    const ox = Math.floor(this.player.position.x) - 20;
+    const oz = Math.floor(this.player.position.z) - 6;
+    const y = Math.floor(this.player.position.y) + 6;
+    const PER_ROW = 20;
+    let row = 0;
+    let col = 0;
+    let lastCat = '';
+    const place: [number, number, number, number, number][] = [];
+    for (const b of blocks) {
+      if (b.category !== lastCat || col === PER_ROW) {
+        if (lastCat) row += b.category !== lastCat ? 2 : 1;
+        col = 0;
+        lastCat = b.category!;
+      }
+      const x = ox + col * 2;
+      const z = oz - row * 3;
+      const facing = 2; // face the player standing to the south
+      place.push([
+        x,
+        y,
+        z,
+        b.id,
+        b.shape === 'slab' || b.shape === 'cube' || b.shape === 'cross' ? 0 : facing,
+      ]);
+      col++;
+    }
+    const minZ = oz - row * 3 - 2;
+    this.world.prepareArea(new THREE.Vector3(ox + PER_ROW, y, (oz + minZ) / 2), 3);
+    for (let x = ox - 2; x <= ox + PER_ROW * 2 + 1; x++)
+      for (let z = minZ; z <= oz + 4; z++) {
+        this.world.setBlock(x, y - 1, z, floor);
+        for (let dy = 0; dy < 16; dy++) this.world.setBlock(x, y + dy, z, AIR);
+      }
+    for (const [x, by, z, id, state] of place) {
+      this.world.setBlock(x, by, z, id, state);
+      if (BLOCKS[id].shape === 'door') this.world.setBlock(x, by + 1, z, id, state | TOP);
+    }
+    // Stand at the front edge, a little raised, looking over the rows.
+    this.player.flying = true;
+    this.player.teleport(ox + PER_ROW, y + 2, oz + 5);
+    this.player.yaw = 0;
+    this.player.pitch = -0.42;
+    return place.length;
+  }
+
   debugSpawnPart(id: string, offset = new THREE.Vector3(0, 1, -3)): Contraption {
     const pos = this.player.position.clone().add(offset);
     return this.contraptions.spawn(PARTS[id].id, pos);
   }
 }
 
-// Representative colour of an atlas tile, for particles.
-let tileColors: Map<string, number> | null = null;
-export function setTileColors(
-  atlas: HTMLCanvasElement,
-  names: readonly string[],
-  cols: number,
-  px: number,
-): void {
-  const ctx = atlas.getContext('2d')!;
-  tileColors = new Map();
-  names.forEach((n, i) => {
-    const d = ctx.getImageData((i % cols) * px, Math.floor(i / cols) * px, px, px).data;
+/** Blocks that right-click opens and closes. */
+const OPENABLE = new Set<BlockShape>(['door', 'trapdoor', 'fence_gate']);
+
+/**
+ * State bits for a block being placed: it faces the way the player looks, and slabs, stairs and
+ * trapdoors go in the top half when placed against a ceiling or the upper half of a side.
+ */
+function placementState(shape: BlockShape, yaw: number, ny: number, fracY: number): number {
+  let state = 0;
+  if (shape !== 'cube' && shape !== 'cross' && shape !== 'slab') state |= facingFromYaw(yaw);
+  if (shape === 'slab' || shape === 'stairs' || shape === 'trapdoor')
+    if (ny === -1 || (ny === 0 && fracY > 0.5)) state |= TOP;
+  return state;
+}
+
+// Representative colour of an atlas tile, for particles (worked out on first use).
+let tileAtlas: HTMLCanvasElement | null = null;
+const tileColors = new Map<string, number>();
+export function setTileColorAtlas(atlas: HTMLCanvasElement): void {
+  tileAtlas = atlas;
+  tileColors.clear();
+}
+function tileColor(name: string): number {
+  let c = tileColors.get(name);
+  if (c !== undefined) return c;
+  c = 0x888888;
+  if (tileAtlas) {
+    const i = tileIndex(name);
+    const d = tileAtlas
+      .getContext('2d', { willReadFrequently: true })!
+      .getImageData((i % ATLAS_COLS) * TILE_PX, Math.floor(i / ATLAS_COLS) * TILE_PX, TILE_PX, TILE_PX).data;
     let r = 0,
       g = 0,
       b = 0,
-      c = 0;
+      n = 0;
     for (let j = 0; j < d.length; j += 4)
       if (d[j + 3] > 100) {
         r += d[j];
         g += d[j + 1];
         b += d[j + 2];
-        c++;
+        n++;
       }
-    c = Math.max(1, c);
-    tileColors!.set(n, (Math.round(r / c) << 16) | (Math.round(g / c) << 8) | Math.round(b / c));
-  });
-}
-function tileColor(name: string): number {
-  return tileColors?.get(name) ?? 0x888888;
+    n = Math.max(1, n);
+    c = (Math.round(r / n) << 16) | (Math.round(g / n) << 8) | Math.round(b / n);
+  }
+  tileColors.set(name, c);
+  return c;
 }

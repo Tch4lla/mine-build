@@ -7,7 +7,10 @@
  */
 import * as THREE from 'three';
 import { SVGLoader } from 'three/examples/jsm/loaders/SVGLoader.js';
-import { BLOCKS } from '../world/blocks';
+import { BLOCKS, blockLibId } from '../world/blocks';
+import { ChunkData } from '../world/chunk';
+import { meshChunk } from '../world/chunkMesher';
+import { libArt, libSvg } from '../library/art';
 import { ATLAS_COLS, TILE_PX, tileIndex, tileUV } from '../world/tiles';
 import { toonGradient } from '../engine/atlas';
 import { item } from './items';
@@ -76,6 +79,19 @@ function blockIcon(blockId: number): string {
   return svgDataUrl(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="-6 -6 112 112">${body}${lines}</svg>`);
 }
 
+/** Forget cached icons and block models (after the block art changes). */
+export function clearIconCache(): void {
+  iconCache.clear();
+  blockModels.clear();
+}
+
+/** A block's icon: its sprite-library drawing when it has one, else an isometric cube. */
+function blockIconFor(blockId: number): string {
+  const libId = blockLibId(BLOCKS[blockId]);
+  const art = libId ? libArt('block', libId) : undefined;
+  return art ? svgDataUrl(libSvg(art)) : blockIcon(blockId);
+}
+
 /** Data URL icon for a stack (bound tools show their material at the binding point). */
 export function iconFor(stack: ItemStack | { id: string; data?: ItemStack['data'] }): string {
   const def = item(stack.id);
@@ -85,7 +101,7 @@ export function iconFor(stack: ItemStack | { id: string; data?: ItemStack['data'
   if (!url) {
     url =
       def.block !== undefined && !def.tool
-        ? blockIcon(def.block)
+        ? blockIconFor(def.block)
         : svgDataUrl(itemSvg(stack.id, { fuse, stroke: true }));
     iconCache.set(key, url);
   }
@@ -159,6 +175,28 @@ function blockGeometry(blockId: number): THREE.BufferGeometry {
   return g;
 }
 
+/**
+ * A shaped block (slab, stairs, fence, plant...) as the chunk mesher draws it, centred on the
+ * origin, so held and dropped blocks look like placed ones.
+ */
+const blockModels = new Map<number, THREE.BufferGeometry>();
+function shapedBlockGeometry(blockId: number): THREE.BufferGeometry {
+  let g = blockModels.get(blockId);
+  if (g) return g;
+  const c = new ChunkData(0, 0);
+  c.set(1, 1, 1, blockId);
+  const m = meshChunk(c, () => 0).solid;
+  g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(m.positions, 3));
+  g.setAttribute('normal', new THREE.BufferAttribute(m.normals, 3));
+  g.setAttribute('uv', new THREE.BufferAttribute(m.uvs, 2));
+  g.setAttribute('color', new THREE.BufferAttribute(m.colors, 3));
+  g.setIndex(new THREE.BufferAttribute(m.indices, 1));
+  g.translate(-1.5, -1.5, -1.5);
+  blockModels.set(blockId, g);
+  return g;
+}
+
 /** A 3D model of an item, roughly 1 unit in size, centred on the origin. */
 export function itemModel(
   stack: { id: string; data?: ItemStack['data'] },
@@ -166,12 +204,15 @@ export function itemModel(
 ): THREE.Object3D {
   const def = item(stack.id);
   if (def.block !== undefined && !def.tool && atlasTexture) {
+    const shaped = (BLOCKS[def.block].shape ?? 'cube') !== 'cube';
     const mat = new THREE.MeshToonMaterial({
       map: atlasTexture,
       alphaTest: 0.5,
       gradientMap: toonGradient(),
+      vertexColors: shaped,
+      side: shaped ? THREE.DoubleSide : THREE.FrontSide,
     });
-    return new THREE.Mesh(blockGeometry(def.block), mat);
+    return new THREE.Mesh(shaped ? shapedBlockGeometry(def.block) : blockGeometry(def.block), mat);
   }
   const group = new THREE.Group();
   const layers = itemLayers(stack.id, def.tool ? stack.data?.fuse : undefined);

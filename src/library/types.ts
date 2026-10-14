@@ -25,6 +25,8 @@ export interface LibBlock {
   stack: number;
   ref: string;
   tiles: LibTiles;
+  /** The drawing's main box in block space, [x0, y0, z0, x1, y1, z1], when it is drawn as boxes. */
+  box: [number, number, number, number, number, number] | null;
   /** The hand-written game block this is the library look of, if any. */
   core: string | null;
   /** The game's block key: `core` if set, else `id` (made unique against core keys). */

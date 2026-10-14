@@ -504,6 +504,21 @@ kbd {
   margin-bottom: 12px;
   flex-wrap: wrap;
 }
+.catalog-groups {
+  margin: 8px 0;
+}
+.catalog-groups button {
+  padding: 3px 9px;
+  font-size: 13px;
+}
+input[type='search'] {
+  width: 100%;
+  max-width: 500px;
+  box-sizing: border-box;
+}
+.catalog-groups {
+  max-width: 500px;
+}
 .tabs button.active {
   background-color: var(--accent-2);
   color: var(--paper);

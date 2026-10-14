@@ -2,7 +2,8 @@
  * Pure (DOM-free) chunk mesher: hidden-face culling with per-vertex ambient occlusion.
  * Produces separate buffers for solid/cutout geometry and translucent geometry (water).
  */
-import { BLOCKS, RENDER, WATER_STRENGTH } from './blocks';
+import { BLOCKS, FULL_SOLID, IS_SOLID, RENDER, WATER_STRENGTH } from './blocks';
+import { connectGroup, shapeBoxes, type BlockShape, type Box, type ShapeBox } from './shapes';
 import { CHUNK_HEIGHT, CHUNK_SIZE, ChunkData, MAX_BLOCK_ID } from './chunk';
 import { tileIndex, tileUV } from './tiles';
 
@@ -100,16 +101,106 @@ const CORNER_UV: [number, number][] = [
 ];
 const AO_LEVEL = [0.45, 0.65, 0.82, 1.0];
 
-/** Precomputed per-block tile UVs for each face kind. */
-const BLOCK_UVS = BLOCKS.map((b) => ({
-  top: tileUV(tileIndex(b.tiles.top)),
-  side: tileUV(tileIndex(b.tiles.side)),
-  bottom: tileUV(tileIndex(b.tiles.bottom)),
-}));
+/** Per-block tile UVs for each face kind (recomputed when the art style changes). */
+type UV = [number, number, number, number];
+let BLOCK_UVS: { top: UV; side: UV; bottom: UV }[] = [];
+export function refreshBlockUVs(): void {
+  BLOCK_UVS = BLOCKS.map((b) => ({
+    top: tileUV(tileIndex(b.tiles.top)),
+    side: tileUV(tileIndex(b.tiles.side)),
+    bottom: tileUV(tileIndex(b.tiles.bottom)),
+  }));
+}
+refreshBlockUVs();
 
+/** Blocks drawn unshaded: the lamp, glowing ore and library blocks that give off light. */
 const FULL_BRIGHT = new Set(['lamp', 'crystal_ore']);
 const BRIGHT = new Uint8Array(MAX_BLOCK_ID + 1);
-for (const b of BLOCKS) BRIGHT[b.id] = FULL_BRIGHT.has(b.key) ? 1 : 0;
+for (const b of BLOCKS) BRIGHT[b.id] = FULL_BRIGHT.has(b.key) || (b.light ?? 0) >= 10 ? 1 : 0;
+
+/** Shape by id ('cube' for blocks that don't set one). */
+const SHAPE: BlockShape[] = [];
+for (const b of BLOCKS) SHAPE[b.id] = b.shape ?? 'cube';
+const GROUP = SHAPE.map(connectGroup);
+
+/** Which horizontal neighbours a fence, wall or pane joins (CONNECT bits n, e, s, w). */
+function connections(
+  at: (x: number, y: number, z: number) => number,
+  x: number,
+  y: number,
+  z: number,
+  group: string,
+): number {
+  let c = 0;
+  const joins = (nb: number) => GROUP[nb] === group || FULL_SOLID[nb] === 1;
+  if (joins(at(x, y, z - 1))) c |= 1;
+  if (joins(at(x + 1, y, z))) c |= 2;
+  if (joins(at(x, y, z + 1))) c |= 4;
+  if (joins(at(x - 1, y, z))) c |= 8;
+  return c;
+}
+
+/** The boxes a non-cube block is drawn (or collides) with. */
+function blockShapeBoxes(
+  chunk: ChunkData,
+  at: (x: number, y: number, z: number) => number,
+  x: number,
+  y: number,
+  z: number,
+  id: number,
+  collision: boolean,
+): ShapeBox[] {
+  const shape = SHAPE[id];
+  const group = GROUP[id];
+  return shapeBoxes(
+    {
+      shape,
+      state: chunk.getState(x, y, z),
+      conn: group ? connections(at, x, y, z, group) : 0,
+      box: BLOCKS[id].box,
+    },
+    collision,
+  );
+}
+
+/**
+ * Texture coordinates (0–1 within the tile) of a point on face f of a box, matching the cube
+ * faces' orientation so a slab shows the lower half of its side texture, not a squashed one.
+ */
+function faceUV(f: number, px: number, py: number, pz: number): [number, number] {
+  switch (f) {
+    case 0:
+      return [1 - pz, py];
+    case 1:
+      return [pz, py];
+    case 2:
+      return [px, 1 - pz];
+    case 3:
+      return [px, pz];
+    case 4:
+      return [px, py];
+    default:
+      return [1 - px, py];
+  }
+}
+
+/** Is face f of box b on the block's boundary (so a neighbour can hide it)? */
+function onBoundary(f: number, b: Box): boolean {
+  switch (f) {
+    case 0:
+      return b[3] >= 1;
+    case 1:
+      return b[0] <= 0;
+    case 2:
+      return b[4] >= 1;
+    case 3:
+      return b[1] <= 0;
+    case 4:
+      return b[5] >= 1;
+    default:
+      return b[2] <= 0;
+  }
+}
 
 class Builder {
   pos: number[] = [];
@@ -179,6 +270,13 @@ export function meshChunk(chunk: ChunkData, sample: BlockSampler): { solid: Mesh
         const id = at(x, y, z);
         const r = RENDER[id];
         if (r === 0 || r === 4) continue;
+        if (SHAPE[id] !== 'cube') {
+          if (SHAPE[id] === 'cross') emitCross(solid, x, y, z, BLOCK_UVS[id].side, BRIGHT[id] ? 1 : 0.92);
+          else if (SHAPE[id] === 'flat')
+            emitFlat(solid, x, y, z, BLOCK_UVS[id].side, chunk.getState(x, y, z) & 1, BRIGHT[id] ? 1 : 0.92);
+          else emitBoxes(solid, x, y, z, id, blockShapeBoxes(chunk, at, x, y, z, id, false), at);
+          continue;
+        }
         const out = r === 3 ? water : solid;
         const uvs = BLOCK_UVS[id];
         const strength = WATER_STRENGTH[id];
@@ -242,6 +340,117 @@ export function meshChunk(chunk: ChunkData, sample: BlockSampler): { solid: Mesh
     }
   }
   return { solid: solid.build(), water: water.build() };
+}
+
+/** Boxes of a shaped block, with faces against an opaque neighbour left out. */
+function emitBoxes(
+  out: Builder,
+  x: number,
+  y: number,
+  z: number,
+  id: number,
+  boxes: ShapeBox[],
+  at: (x: number, y: number, z: number) => number,
+): void {
+  const uvs = BLOCK_UVS[id];
+  const bright = BRIGHT[id] === 1;
+  for (const { box: b, vOffset = 0, vScale = 1 } of boxes) {
+    for (let f = 0; f < 6; f++) {
+      const face = FACES[f];
+      const [nx, ny, nz] = face.n;
+      if (onBoundary(f, b) && occludes(at(x + nx, y + ny, z + nz))) continue;
+      const [u0, v0, u1, v1] = uvs[face.tile];
+      const base = out.pos.length / 3;
+      for (const [cx, cy, cz] of face.corners) {
+        const px = cx ? b[3] : b[0];
+        const py = Math.min(1, cy ? b[4] : b[1]);
+        const pz = cz ? b[5] : b[2];
+        out.pos.push(x + px, y + py, z + pz);
+        out.nor.push(nx, ny, nz);
+        const [tu, fv] = faceUV(f, px, py, pz);
+        const tv = ny === 0 ? vOffset + fv * vScale : fv;
+        out.uv.push(u0 + (u1 - u0) * tu, v0 + (v1 - v0) * tv);
+        const c = bright ? 1 : face.shade;
+        out.col.push(c, c, c);
+      }
+      out.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
+    }
+  }
+}
+
+/** Two crossed, double-sided quads showing the block's sprite (plants, torches, lanterns...). */
+function emitCross(out: Builder, x: number, y: number, z: number, uv: UV, shade: number): void {
+  emitQuads(out, x, y, z, uv, shade, [
+    [0.15, 0.15, 0.85, 0.85],
+    [0.15, 0.85, 0.85, 0.15],
+  ]);
+}
+
+/** One double-sided quad across the block, facing north–south (or east–west when `sideways`). */
+function emitFlat(
+  out: Builder,
+  x: number,
+  y: number,
+  z: number,
+  uv: UV,
+  sideways: number,
+  shade: number,
+): void {
+  emitQuads(out, x, y, z, uv, shade, [sideways ? [0.5, 1, 0.5, 0] : [0, 0.5, 1, 0.5]]);
+}
+
+/** Upright, double-sided sprite quads from (ax, az) to (bx, bz) across the block. */
+function emitQuads(
+  out: Builder,
+  x: number,
+  y: number,
+  z: number,
+  uv: UV,
+  shade: number,
+  planes: [number, number, number, number][],
+): void {
+  const [u0, v0, u1, v1] = uv;
+  for (const [ax, az, bx, bz] of planes) {
+    const base = out.pos.length / 3;
+    const corners: [number, number, number, number, number][] = [
+      [ax, 0, az, 0, 0],
+      [bx, 0, bz, 1, 0],
+      [bx, 1, bz, 1, 1],
+      [ax, 1, az, 0, 1],
+    ];
+    for (const [cx, cy, cz, cu, cv] of corners) {
+      out.pos.push(x + cx, y + cy, z + cz);
+      // An upward normal lights both sides alike.
+      out.nor.push(0, 1, 0);
+      out.uv.push(u0 + (u1 - u0) * cu, v0 + (v1 - v0) * cv);
+      out.col.push(shade, shade, shade);
+    }
+    out.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
+    out.idx.push(base, base + 2, base + 1, base, base + 3, base + 2);
+  }
+}
+
+/**
+ * Collision boxes (chunk-local, [x0, y0, z0, x1, y1, z1] per box) of solid blocks that aren't
+ * full cubes: slabs, stairs, fences, doors... Full cubes collide through exposedSolidVoxels.
+ */
+export function shapeColliderBoxes(chunk: ChunkData, sample: BlockSampler): Float32Array {
+  const out: number[] = [];
+  const S = CHUNK_SIZE;
+  const at = (x: number, y: number, z: number): number => {
+    if (y < 0 || y >= CHUNK_HEIGHT) return 0;
+    if (x < 0 || x >= S || z < 0 || z >= S) return sample(x, y, z);
+    return chunk.get(x, y, z);
+  };
+  for (let y = 0; y < CHUNK_HEIGHT; y++)
+    for (let z = 0; z < S; z++)
+      for (let x = 0; x < S; x++) {
+        const id = chunk.get(x, y, z);
+        if (!IS_SOLID[id] || FULL_SOLID[id]) continue;
+        for (const { box: b } of blockShapeBoxes(chunk, at, x, y, z, id, true))
+          out.push(x + b[0], y + b[1], z + b[2], x + b[3], y + b[4], z + b[5]);
+      }
+  return new Float32Array(out);
 }
 
 /**

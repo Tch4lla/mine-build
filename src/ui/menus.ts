@@ -1,4 +1,5 @@
 /** Main menu (world list), pause menu and settings. */
+import type { ArtStyle } from '../world/blocks';
 import { h, clear } from './dom';
 import { createWorld, deleteWorld, exportWorld, importWorld, listWorlds } from '../save/saveManager';
 import type { WorldMeta } from '../save/serialize';
@@ -24,6 +25,8 @@ export interface Settings {
   invertY: boolean;
   /** Ink & Wash outline pass (turn off on slow devices). */
   outlines: boolean;
+  /** Look of the original blocks: their own 'world' art or the sprite library's. */
+  art: ArtStyle;
 }
 
 const DEFAULTS: Settings = {
@@ -33,6 +36,7 @@ const DEFAULTS: Settings = {
   slimes: true,
   invertY: false,
   outlines: true,
+  art: 'world',
 };
 const KEY = `${GAME_SLUG}-settings`;
 migrateLocalStorageKey('mine-build-settings', KEY);
@@ -262,6 +266,17 @@ export function showPause(root: HTMLElement, a: PauseActions): void {
     });
     return [h('label', {}, label), input];
   };
+  const art = h(
+    'select',
+    { 'data-testid': 'art-style' },
+    h('option', { value: 'world' }, 'World'),
+    h('option', { value: 'library' }, 'Library'),
+  ) as HTMLSelectElement;
+  art.value = s.art;
+  art.addEventListener('change', () => {
+    s.art = art.value as ArtStyle;
+    a.applySettings({ ...s });
+  });
   const creative = h('input', { type: 'checkbox' }) as HTMLInputElement;
   creative.checked = a.creative;
   creative.addEventListener('change', () => a.setCreative(creative.checked));
@@ -289,6 +304,8 @@ export function showPause(root: HTMLElement, a: PauseActions): void {
         ...check('Puffballs', 'slimes'),
         ...check('Invert mouse Y', 'invertY'),
         ...check('Ink outlines', 'outlines'),
+        h('label', { title: 'How the original blocks look: their own art or the sprite library' }, 'Art'),
+        art,
         h('label', {}, 'Creative mode'),
         creative,
       ),

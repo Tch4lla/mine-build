@@ -1,12 +1,14 @@
 import './style.css';
 import { GAME_NAME } from './brand';
 import { initPhysics } from './physics/physicsWorld';
-import { createAtlasTexture } from './engine/atlas';
-import { initIcons } from './items/icons';
-import { Game, setTileColors } from './game';
+import { createAtlasTexture, loadLibraryTiles } from './engine/atlas';
+import { clearIconCache, initIcons } from './items/icons';
+import { setBlockArt } from './world/blocks';
+import { refreshBlockUVs } from './world/chunkMesher';
+import { loadLibraryArt } from './library/art';
+import { Game, setTileColorAtlas } from './game';
 import { MainMenu, exportWorldToFile, loadSettings, saveSettings, showPause } from './ui/menus';
 import { loadWorld } from './save/saveManager';
-import { ATLAS_COLS, TILE_NAMES, TILE_PX } from './world/tiles';
 import { listPhotos } from './photos/photoStore';
 import { registerThumb } from './photos/photoTextures';
 
@@ -28,8 +30,9 @@ async function boot(): Promise<void> {
   menu.loading('Loading…');
   await initPhysics();
   const { texture, canvas } = createAtlasTexture();
+  await Promise.all([loadLibraryTiles(canvas, texture), loadLibraryArt()]);
   initIcons(canvas, texture);
-  setTileColors(canvas, TILE_NAMES, ATLAS_COLS, TILE_PX);
+  setTileColorAtlas(canvas);
   // Thumbnails for photo items in inventories.
   listPhotos()
     .then((ps) => ps.forEach(registerThumb))
@@ -44,6 +47,9 @@ async function boot(): Promise<void> {
       void menu.show();
       return;
     }
+    setBlockArt(settings.art);
+    refreshBlockUVs();
+    clearIconCache();
     game = new Game(dom, loaded.meta, loaded.chunks, settings, texture);
     window.__game = game;
     game.applySettings(settings);

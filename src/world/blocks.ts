@@ -3,6 +3,10 @@
  * there can be up to 4,096 block types.
  */
 import { MAX_BLOCK_ID } from './chunk';
+import { LIB_BLOCKS } from '../generated/library';
+import type { LibBlock } from '../library/types';
+import { libTile } from './tiles';
+import type { Box, BlockShape } from './shapes';
 
 export type ToolClass = 'pickaxe' | 'axe' | 'shovel' | 'none';
 
@@ -38,6 +42,19 @@ export interface BlockDef {
   gravity?: boolean;
   /** Items dropped when broken. Defaults to the block's own item. */
   drops?: BlockDrop[];
+  /** Geometry (see shapes.ts). Defaults to a full cube. */
+  shape?: BlockShape;
+  /** The library drawing's main box, for 'box' shapes. */
+  box?: Box | null;
+  /** Light level 0–15; bright blocks are drawn unshaded. */
+  light?: number;
+  /** Catalogue group (the library's category; core blocks are 'Basics'). */
+  category?: string;
+  /** Sprite-library block this was made from. */
+  lib?: LibBlock;
+  /** Core blocks: their library look (see setBlockArt) and its library id. */
+  libTiles?: { top: string; side: string; bottom: string };
+  libLookId?: string;
 }
 
 export const AIR = 0;
@@ -277,7 +294,113 @@ for (let s = 1; s <= 7; s++) {
   });
 }
 
+// ---------------------------------------------------------------------------------------------
+// Sprite-library blocks (src/generated/library.ts). Their ids come from the append-only
+// src/generated/blockIds.json; library blocks that are the library look of a core block (core set)
+// don't get their own id and only lend that block their tiles.
+
+const HARDNESS: Record<string, number> = {
+  Instant: 0.05,
+  Soft: 0.6,
+  Firm: 1.5,
+  Hard: 3,
+  'Very hard': 6,
+  Unbreakable: Infinity,
+};
+const TOOLS: Record<string, ToolClass> = { Pickaxe: 'pickaxe', Axe: 'axe', Shovel: 'shovel' };
+
+function libTiles(b: LibBlock) {
+  const t = b.tiles;
+  return 'sprite' in t
+    ? all(libTile(t.sprite))
+    : { top: libTile(t.top), side: libTile(t.side), bottom: libTile(t.bottom) };
+}
+
+/** The game shape for a library block. */
+function libShape(b: LibBlock): BlockShape {
+  const sprite = 'sprite' in b.tiles;
+  switch (b.shape) {
+    case 'cube':
+      return sprite ? 'cross' : 'cube';
+    case 'slab':
+    case 'stairs':
+    case 'wall':
+    case 'fence':
+    case 'fence_gate':
+    case 'pane':
+    case 'door':
+    case 'trapdoor':
+      return b.shape;
+    case 'bars':
+      return 'pane';
+    case 'sign':
+    case 'hanging_sign':
+    case 'banner':
+      return sprite ? 'flat' : 'box';
+    default:
+      // Beds, shelves, carpets, plates, buttons and single-box objects keep their drawing's box;
+      // everything else drawn as a picture (plants, torches, signs...) is shown as crossed quads.
+      return !sprite && b.box ? 'box' : 'cross';
+  }
+}
+
+/** Shapes the player walks through. */
+const WALK_THROUGH = new Set([
+  'plant',
+  'pressure_plate',
+  'button',
+  'carpet',
+  'banner',
+  'sign',
+  'hanging_sign',
+]);
+
+for (const b of [...LIB_BLOCKS].sort((a, c) => a.blockId - c.blockId)) {
+  if (b.core) {
+    const core = defs.find((d) => d.key === b.core)!;
+    core.libTiles = libTiles(b);
+    core.libLookId = b.id;
+    continue;
+  }
+  if (b.blockId !== defs.length) throw new Error(`Library block ${b.key} expected id ${defs.length}`);
+  const shape = libShape(b);
+  const cube = shape === 'cube';
+  def({
+    key: b.key,
+    name: b.name,
+    tiles: libTiles(b),
+    render: cube && !b.seeThrough ? 'opaque' : 'cutout',
+    solid: shape !== 'cross' && !WALK_THROUGH.has(b.shape),
+    hardness: HARDNESS[b.hardness] ?? 1.5,
+    tool: TOOLS[b.bestTool] ?? 'none',
+    burnable: b.flammable,
+    gravity: b.falls,
+    shape,
+    box: b.box,
+    light: b.light,
+    category: b.category,
+    lib: b,
+  });
+}
+
 export const BLOCKS: readonly BlockDef[] = defs.map((d, id) => ({ ...d, id }));
+
+/** Core blocks keep their own look ('world') or take their sprite-library look ('library'). */
+export type ArtStyle = 'world' | 'library';
+const worldTiles = BLOCKS.map((b) => b.tiles);
+let art: ArtStyle = 'world';
+export function setBlockArt(style: ArtStyle): void {
+  art = style;
+  for (const b of BLOCKS) if (b.libTiles) b.tiles = style === 'library' ? b.libTiles : worldTiles[b.id];
+}
+export function blockArt(): ArtStyle {
+  return art;
+}
+
+/** The sprite-library drawing a block's icon uses: its own, or its library look under 'library' art. */
+export function blockLibId(b: BlockDef): string | undefined {
+  return b.lib?.id ?? (art === 'library' ? b.libLookId : undefined);
+}
 
 const byKey = new Map(BLOCKS.map((b) => [b.key, b]));
 export function blockByKey(key: string): BlockDef | undefined {
@@ -289,12 +412,18 @@ export const IS_SOLID = new Uint8Array(MAX_BLOCK_ID + 1);
 export const IS_OPAQUE = new Uint8Array(MAX_BLOCK_ID + 1);
 export const RENDER = new Uint8Array(MAX_BLOCK_ID + 1); // 0 none, 1 opaque, 2 cutout, 3 translucent, 4 custom
 export const FALLS = new Uint8Array(MAX_BLOCK_ID + 1);
+/** Full, solid cubes (voxel colliders); other solid blocks collide by their shape's boxes. */
+export const FULL_SOLID = new Uint8Array(MAX_BLOCK_ID + 1);
+/** Light level 0–15 by id. */
+export const LIGHT = new Uint8Array(MAX_BLOCK_ID + 1);
 /** Water strength by id: 8 for a source block, 1-7 for flowing water, 0 for anything else. */
 export const WATER_STRENGTH = new Uint8Array(MAX_BLOCK_ID + 1);
 WATER_STRENGTH[WATER] = 8;
 for (let s = 1; s <= 7; s++) WATER_STRENGTH[WATER_FLOW[s]] = s;
 for (const b of BLOCKS) {
   FALLS[b.id] = b.gravity ? 1 : 0;
+  FULL_SOLID[b.id] = b.solid && (b.shape ?? 'cube') === 'cube' ? 1 : 0;
+  LIGHT[b.id] = b.light ?? 0;
   IS_SOLID[b.id] = b.solid ? 1 : 0;
   IS_OPAQUE[b.id] = b.render === 'opaque' ? 1 : 0;
   RENDER[b.id] = ['none', 'opaque', 'cutout', 'translucent', 'custom'].indexOf(b.render);

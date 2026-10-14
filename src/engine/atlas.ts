@@ -7,7 +7,8 @@
  */
 import * as THREE from 'three';
 import { mulberry32 } from './rng';
-import { ATLAS_COLS, ATLAS_ROWS, TILE_NAMES, TILE_PX, type TileName } from '../world/tiles';
+import { LIB_ATLAS_URL } from '../generated/library';
+import { ATLAS_COLS, ATLAS_ROWS, CORE_ROWS, TILE_NAMES, TILE_PX, type TileName } from '../world/tiles';
 
 type RGB = [number, number, number];
 type Put = (x: number, y: number, c: RGB, a?: number) => void;
@@ -166,6 +167,18 @@ export function paintAtlas(): HTMLCanvasElement {
   });
   ctx.putImageData(img, 0, 0);
   return canvas;
+}
+
+/**
+ * Draws the sprite-library tiles (public/library/blocks.png) into the atlas below the core tiles.
+ * Resolves once they are in, so worlds that use library blocks never mesh with blank tiles.
+ */
+export async function loadLibraryTiles(canvas: HTMLCanvasElement, texture?: THREE.Texture): Promise<void> {
+  const img = new Image();
+  img.src = LIB_ATLAS_URL;
+  await img.decode();
+  canvas.getContext('2d')!.drawImage(img, 0, CORE_ROWS * TILE_PX);
+  if (texture) texture.needsUpdate = true;
 }
 
 export function createAtlasTexture(): { texture: THREE.CanvasTexture; canvas: HTMLCanvasElement } {

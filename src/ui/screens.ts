@@ -1,7 +1,7 @@
 /** Modal screens: inventory + crafting, Workbench (Bind), photo gallery, help. */
 import { h, clear, renderSlot, stackName, tooltipText } from './dom';
 import { HOTBAR_SIZE, INVENTORY_SIZE, canMerge, type Inventory, type ItemStack } from '../items/inventory';
-import { ITEMS, item } from '../items/items';
+import { ITEMS, item, type ItemDef } from '../items/items';
 import { RECIPES, canCraft, craft } from '../items/crafting';
 import { iconFor } from '../items/icons';
 import { MATERIALS, applyBind, canBind, boundStats, stackStats } from '../bind/bindRecipes';
@@ -63,10 +63,38 @@ class Tooltip {
   }
 }
 
+/** Creative catalogue groups, in order: block categories from the sprite library, then items. */
+const GROUP_ORDER = [
+  'Basics',
+  'Building',
+  'Wood',
+  'Natural',
+  'Plants',
+  'Decoration',
+  'Doors & Mechanisms',
+  'Lighting',
+  'Furniture',
+  'Workstations',
+  'Farming',
+  'Utility',
+  'Storage',
+  'Elements',
+  'Food',
+];
+function catalogGroup(d: ItemDef): string {
+  return d.kind === 'block' ? (d.category ?? 'Basics') : 'Items';
+}
+const CATALOG_GROUPS = [...new Set(ITEMS.map(catalogGroup))].sort(
+  (a, b) => (GROUP_ORDER.indexOf(a) + 1 || 99) - (GROUP_ORDER.indexOf(b) + 1 || 99),
+);
+
 class InventoryScreen extends Screen {
   private cursor: ItemStack | null = null;
   private cursorEl = h('div', { class: 'slot cursor-stack hidden' });
   private tab: 'crafting' | 'creative' = 'crafting';
+  /** Creative catalogue: the chosen group and search text (kept while the screen is open). */
+  private group = 'Basics';
+  private query = '';
   private tooltip = new Tooltip();
   private moveListener = (e: MouseEvent) => {
     this.cursorEl.style.left = `${e.clientX}px`;
@@ -221,19 +249,53 @@ class InventoryScreen extends Screen {
     } else {
       right.append(h('p', { class: 'small muted' }, 'Click an item to put a stack on your cursor.'));
       const cat = h('div', { class: 'catalog' });
-      for (const d of ITEMS) {
-        if (d.kind === 'photo_frame' || d.kind === 'photo_block') continue;
-        const el = h('div', { class: 'slot' });
-        renderSlot(el, { id: d.id, count: 1 });
-        el.addEventListener('mousedown', () => {
-          this.cursor = { id: d.id, count: d.maxStack };
-          this.render();
-        });
-        el.addEventListener('mouseenter', (e) => this.tooltip.show({ id: d.id, count: 1 }, e));
-        el.addEventListener('mouseleave', () => this.tooltip.hide());
-        cat.append(el);
-      }
-      right.append(cat);
+      const fill = () => {
+        cat.replaceChildren();
+        const q = this.query.trim().toLowerCase();
+        for (const d of ITEMS) {
+          if (d.kind === 'photo_frame' || d.kind === 'photo_block') continue;
+          if (q ? !d.name.toLowerCase().includes(q) : catalogGroup(d) !== this.group) continue;
+          const el = h('div', { class: 'slot', title: d.name });
+          renderSlot(el, { id: d.id, count: 1 });
+          el.addEventListener('mousedown', () => {
+            this.cursor = { id: d.id, count: d.maxStack };
+            this.render();
+          });
+          el.addEventListener('mouseenter', (e) => this.tooltip.show({ id: d.id, count: 1 }, e));
+          el.addEventListener('mouseleave', () => this.tooltip.hide());
+          cat.append(el);
+        }
+        if (!cat.childElementCount)
+          cat.append(h('p', { class: 'small muted' }, 'Nothing matches that search.'));
+      };
+      const search = h('input', {
+        type: 'search',
+        placeholder: 'Search all items',
+        value: this.query,
+        'data-testid': 'catalog-search',
+      }) as HTMLInputElement;
+      // Rebuild only the grid while typing, so the search box keeps focus.
+      search.addEventListener('input', () => {
+        this.query = search.value;
+        for (const b of groups.querySelectorAll('button'))
+          b.classList.toggle('active', !this.query && b.textContent === this.group);
+        fill();
+      });
+      search.addEventListener('keydown', (e) => e.stopPropagation());
+      const groups = h('div', { class: 'tabs catalog-groups' });
+      for (const g of CATALOG_GROUPS)
+        groups.append(
+          h(
+            'button',
+            {
+              class: !this.query && g === this.group ? 'active' : '',
+              onclick: () => ((this.group = g), (this.query = ''), this.render()),
+            },
+            g,
+          ),
+        );
+      right.append(search, groups, cat);
+      fill();
     }
     panel.append(h('div', { class: 'inv-layout' }, left, right));
     this.el.append(panel);

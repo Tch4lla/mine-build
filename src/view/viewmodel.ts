@@ -65,6 +65,11 @@ export class ViewModel {
     if (stack.data?.photoId) void photoTexture(stack.data.photoId).then((t) => t && build(t.texture));
   }
 
+  /** Rebuilds the held model on the next setStack (after the block art changes). */
+  refresh(): void {
+    this.key = '\u0000';
+  }
+
   doSwing(): void {
     this.swing = 1;
   }

@@ -167,7 +167,9 @@ class Atlas:
 
 def block_tiles(entry, atlas: Atlas) -> dict:
     svg, boxes = draw_with_boxes(entry.draw)
-    if entry.shape not in ("plant", "custom") and boxes:
+    # Custom blocks drawn as a single box (chest, cake...) get faces too; others stay sprites.
+    boxed = boxes and (entry.shape not in ("plant", "custom") or len(boxes) == 1)
+    if boxed:
         # The biggest box carries the block's material (stairs, slabs and fences share it).
         bx = max(boxes, key=lambda b: (b.a1 - b.a0) * (b.b1 - b.b0) * (b.c1 - b.c0))
         top_c = bx.top_color or bx.color
@@ -175,8 +177,10 @@ def block_tiles(entry, atlas: Atlas) -> dict:
         seed = entry.src_id
         top = atlas.add(face_svg(top_c, bx.top, seed + ":top", bx.opacity))
         side = atlas.add(face_svg(side_c, bx.side, seed + ":side", bx.opacity))
-        return {"top": top, "side": side, "bottom": top}, svg
-    return {"sprite": atlas.add(sprite_svg(svg))}, svg
+        # The box in block space as [x0, y0, z0, x1, y1, z1] (iso a → x, height c → y, b → z).
+        box = [round(v, 3) for v in (bx.a0, bx.c0, bx.b0, bx.a1, bx.c1, bx.b1)]
+        return {"top": top, "side": side, "bottom": top}, svg, box
+    return {"sprite": atlas.add(sprite_svg(svg))}, svg, None
 
 
 # --- export ---------------------------------------------------------------------------------------
@@ -202,8 +206,9 @@ def main() -> None:
         if e is None:
             problems.append(f"block {rec['id']}: classifier no longer covers {rec['ref']}")
             continue
-        tiles, svg = block_tiles(e, atlas)
+        tiles, svg, box = block_tiles(e, atlas)
         rec["tiles"] = tiles
+        rec["box"] = box
         # Same key as a core block only counts when it is the same kind of thing (the library's
         # "snow" is a thin layer, not the core snow block).
         same = rec["id"] in CORE_BLOCK_IDS and rec["shape"] == "cube" and rec["id"] not in CORE_ALIAS.values()

@@ -1,8 +1,8 @@
 /** Loads, meshes, collides and unloads chunks around points of interest. */
 import * as THREE from 'three';
-import { AIR, IS_SOLID } from './blocks';
+import { AIR, FULL_SOLID, IS_SOLID } from './blocks';
 import { CHUNK_HEIGHT, CHUNK_SIZE, ChunkData, chunkKey } from './chunk';
-import { exposedSolidVoxels, meshChunk, type MeshData } from './chunkMesher';
+import { exposedSolidVoxels, meshChunk, shapeColliderBoxes, type MeshData } from './chunkMesher';
 import { TerrainGenerator } from './terrain';
 import { RAPIER, GROUPS, type Physics } from '../physics/physicsWorld';
 
@@ -11,6 +11,8 @@ interface ChunkEntry {
   solid?: THREE.Mesh;
   water?: THREE.Mesh;
   collider?: RAPIER.Collider;
+  /** Triangle-mesh collider for solid blocks that aren't full cubes (slabs, stairs, fences...). */
+  shapeCollider?: RAPIER.Collider;
   meshDirty: boolean;
   colliderDirty: boolean;
 }
@@ -228,9 +230,8 @@ export class World {
     for (const [k, e] of this.chunks) {
       if (wanted.has(k)) {
         if (!e.collider || e.colliderDirty) this.rebuildCollider(e);
-      } else if (e.collider) {
-        this.physics.world.removeCollider(e.collider, false);
-        e.collider = undefined;
+      } else if (e.collider || e.shapeCollider) {
+        this.removeColliders(e);
         e.colliderDirty = true;
       }
     }
@@ -256,6 +257,11 @@ export class World {
         if (Math.abs(dx) <= this.physicsDistance && Math.abs(dz) <= this.physicsDistance)
           this.rebuildCollider(e);
       }
+  }
+
+  /** Marks every loaded chunk for remeshing (after the block art changes). */
+  remeshAll(): void {
+    for (const e of this.chunks.values()) e.meshDirty = true;
   }
 
   /** Remesh any dirty chunk immediately (used right after the player edits blocks). */
@@ -303,10 +309,25 @@ export class World {
     e.meshDirty = false;
   }
 
-  private rebuildCollider(e: ChunkEntry): void {
+  private removeColliders(e: ChunkEntry): void {
     if (e.collider) this.physics.world.removeCollider(e.collider, false);
+    if (e.shapeCollider) this.physics.world.removeCollider(e.shapeCollider, false);
     e.collider = undefined;
-    const voxels = exposedSolidVoxels(e.data, this.sampler(e.data.cx, e.data.cz), (id) => IS_SOLID[id] === 1);
+    e.shapeCollider = undefined;
+  }
+
+  private rebuildCollider(e: ChunkEntry): void {
+    this.removeColliders(e);
+    const sample = this.sampler(e.data.cx, e.data.cz);
+    const boxes = shapeColliderBoxes(e.data, sample);
+    if (boxes.length > 0) {
+      const desc = RAPIER.ColliderDesc.trimesh(...boxesToTrimesh(boxes))
+        .setTranslation(e.data.cx * CHUNK_SIZE, 0, e.data.cz * CHUNK_SIZE)
+        .setCollisionGroups(GROUPS.terrain)
+        .setFriction(0.9);
+      e.shapeCollider = this.physics.world.createCollider(desc);
+    }
+    const voxels = exposedSolidVoxels(e.data, sample, (id) => FULL_SOLID[id] === 1);
     if (voxels.length > 0) {
       const desc = RAPIER.ColliderDesc.voxels(voxels, { x: 1, y: 1, z: 1 })
         .setTranslation(e.data.cx * CHUNK_SIZE, 0, e.data.cz * CHUNK_SIZE)
@@ -324,7 +345,7 @@ export class World {
         this.group.remove(m);
       }
     }
-    if (e.collider) this.physics.world.removeCollider(e.collider, false);
+    this.removeColliders(e);
     this.chunks.delete(k);
   }
 
@@ -335,4 +356,26 @@ export class World {
   dispose(): void {
     for (const [k, e] of [...this.chunks]) this.unload(k, e);
   }
+}
+
+/** Twelve triangles per box, for one trimesh collider holding every box of a chunk. */
+function boxesToTrimesh(boxes: Float32Array): [Float32Array, Uint32Array] {
+  const n = boxes.length / 6;
+  const verts = new Float32Array(n * 8 * 3);
+  const idx = new Uint32Array(n * 36);
+  // Corner k has x from bit 0, y from bit 1, z from bit 2.
+  const TRIS = [
+    0, 2, 1, 1, 2, 3, 4, 5, 6, 5, 7, 6, 0, 1, 4, 1, 5, 4, 2, 6, 3, 3, 6, 7, 0, 4, 2, 2, 4, 6, 1, 3, 5, 3, 7,
+    5,
+  ];
+  for (let i = 0; i < n; i++) {
+    const o = i * 6;
+    for (let k = 0; k < 8; k++) {
+      verts[(i * 8 + k) * 3] = boxes[o + (k & 1 ? 3 : 0)];
+      verts[(i * 8 + k) * 3 + 1] = boxes[o + (k & 2 ? 4 : 1)];
+      verts[(i * 8 + k) * 3 + 2] = boxes[o + (k & 4 ? 5 : 2)];
+    }
+    for (let t = 0; t < 36; t++) idx[i * 36 + t] = i * 8 + TRIS[t];
+  }
+  return [verts, idx];
 }

@@ -31,6 +31,8 @@ export interface ItemDef {
   /** Primary colour (for icons, particles and bound models). */
   color: string;
   description?: string;
+  /** Group in the creative catalogue. */
+  category?: string;
 }
 
 const items: ItemDef[] = [];
@@ -40,7 +42,15 @@ const add = (d: ItemDef) => items.push(d);
 for (const b of BLOCKS) {
   if (b.render === 'none' || b.render === 'custom' || b.key.startsWith('water') || b.key === 'bedrock')
     continue;
-  add({ id: b.key, name: b.name, kind: 'block', maxStack: 64, block: b.id, color: '#888' });
+  add({
+    id: b.key,
+    name: b.name,
+    kind: 'block',
+    maxStack: b.lib?.stack ?? 64,
+    block: b.id,
+    color: '#888',
+    category: b.category ?? 'Basics',
+  });
 }
 
 // Tools.
