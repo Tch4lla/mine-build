@@ -63,6 +63,10 @@ test('library blocks: place, open, stand on, art style and catalogue', async ({ 
     g.inventory.slots[g.inventory.selected] = { id: 'red_bed', count: 1 };
     g.debugUseHeld();
     const halves = [w.getBlock(x, y, z + 2), w.getBlock(x, y, z + 1), w.getBlockState(x, y, z + 1) & 4];
+    // Holding right-click with another bed must not stack a bed on the bed.
+    g.inventory.slots[g.inventory.selected] = { id: 'red_bed', count: 1 };
+    for (let i = 0; i < 4; i++) g.debugUseHeld(false);
+    halves.push(w.getBlock(x, y + 1, z + 2));
     g.inventory.slots[g.inventory.selected] = null;
     g.sky.time = 0.9;
     g.debugUseHeld();
@@ -71,6 +75,7 @@ test('library blocks: place, open, stand on, art style and catalogue', async ({ 
   expect(bed.halves[0]).toBeGreaterThan(27);
   expect(bed.halves[1]).toBe(bed.halves[0]);
   expect(bed.halves[2]).toBe(4); // the head
+  expect(bed.halves[3]).toBe(0); // nothing placed on top while the button was held
   await page.waitForFunction(() => Math.abs(window.__game!.sky.time - 0.25) < 0.02, null, {
     timeout: 10_000,
   });
@@ -107,11 +112,19 @@ test('library blocks: place, open, stand on, art style and catalogue', async ({ 
     const g = window.__game!;
     g.player.teleport(x + 2.5, y + 2.6, z + 0.5);
     g.player.pitch = -Math.PI / 2 + 0.02;
-    g.inventory.slots[g.inventory.selected] = null;
+    // Opens even while holding a block, and holding the button doesn't place it against the door.
+    g.inventory.slots[g.inventory.selected] = { id: 'stone_bricks', count: 8 };
     g.debugUseHeld();
-    return [g.world.getBlockState(x + 2, y + 1, z) & 8, g.world.getBlockState(x + 2, y, z) & 8];
+    for (let i = 0; i < 3; i++) g.debugUseHeld(false);
+    const open = [g.world.getBlockState(x + 2, y + 1, z) & 8, g.world.getBlockState(x + 2, y, z) & 8];
+    const above = g.world.getBlock(x + 2, y + 2, z);
+    g.debugUseHeld();
+    const closed = g.world.getBlockState(x + 2, y, z) & 8;
+    g.debugUseHeld();
+    g.inventory.slots[g.inventory.selected] = null;
+    return [...open, above, closed];
   }, placed);
-  expect(opened).toEqual([8, 8]);
+  expect(opened).toEqual([8, 8, 0, 0]);
 
   // The player stands on the slab's top, half a block up (in survival: creative players hover).
   await page.evaluate(({ x, y, z }) => {

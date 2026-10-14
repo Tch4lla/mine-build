@@ -39,6 +39,8 @@ export interface ShapeBox {
   vScale?: number;
   /** Draw this box with another atlas tile (a bed's pillow and legs). */
   tile?: string;
+  /** Tile for the box's narrow faces (a door's edges, top and bottom). */
+  edgeTile?: string;
 }
 
 export const FACING = 3;
@@ -95,6 +97,10 @@ export interface ShapeInput {
   conn?: number;
   /** The library drawing's box, for 'box' shapes. */
   box?: Box | null;
+  /** Tile for a door's edges (its material). */
+  edgeTile?: string | null;
+  /** A door's picture, per half. */
+  doorTiles?: { upper: string; lower: string };
 }
 
 /**
@@ -102,7 +108,10 @@ export interface ShapeInput {
  * closed gates collide 1.5 blocks high so they can't be jumped, open gates and doors let the
  * player through their opening, and 'cross' shapes never collide.
  */
-export function shapeBoxes({ shape, state, conn = 0, box }: ShapeInput, collision = false): ShapeBox[] {
+export function shapeBoxes(
+  { shape, state, conn = 0, box, edgeTile, doorTiles }: ShapeInput,
+  collision = false,
+): ShapeBox[] {
   const f = facingOf(state);
   const top = (state & TOP) !== 0;
   const open = (state & OPEN) !== 0;
@@ -157,9 +166,21 @@ export function shapeBoxes({ shape, state, conn = 0, box }: ShapeInput, collisio
       );
     }
     case 'door': {
-      // Facing north: a panel on the far side; open swings it against the west side.
-      const panel: Box = open ? [0, 0, 0, px(3), 1, 1] : [0, 0, 0, 1, 1, px(3)];
-      return [{ box: rotateBox(panel, f), vOffset: top ? 0.5 : 0, vScale: 0.5 }];
+      // Facing north (placed by a player looking north): closed, the panel sits on the side
+      // nearest the player, flush with a wall face; open, it swings away from them against the
+      // west side, hinged at the south-west corner. Its thin faces use the door's material.
+      const panel: Box = open ? [0, 0, 0, px(3), 1, 1] : [0, 0, px(13), 1, 1, 1];
+      const picture = doorTiles ? (top ? doorTiles.upper : doorTiles.lower) : undefined;
+      return [
+        picture
+          ? { box: rotateBox(panel, f), tile: picture, edgeTile: edgeTile ?? undefined }
+          : {
+              box: rotateBox(panel, f),
+              vOffset: top ? 0.5 : 0,
+              vScale: 0.5,
+              edgeTile: edgeTile ?? undefined,
+            },
+      ];
     }
     case 'trapdoor': {
       if (open) return wrap([rotateBox([0, 0, 0, 1, 1, px(3)], f)]);

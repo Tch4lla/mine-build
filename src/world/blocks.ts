@@ -52,6 +52,10 @@ export interface BlockDef {
   category?: string;
   /** Sprite-library block this was made from. */
   lib?: LibBlock;
+  /** Doors: the block whose side tile covers their edges, top and bottom (their material). */
+  edgeOf?: number;
+  /** Doors: the picture of the panel's upper and lower halves. */
+  doorTiles?: { upper: string; lower: string };
   /** Core blocks: their library look (see setBlockArt) and its library id. */
   libTiles?: { top: string; side: string; bottom: string };
   libLookId?: string;
@@ -382,8 +386,28 @@ for (const b of [...LIB_BLOCKS].sort((a, c) => a.blockId - c.blockId)) {
     light: b.light,
     category: b.category,
     lib: b,
+    doorTiles:
+      'upper' in b.tiles && b.tiles.upper !== undefined && b.tiles.lower !== undefined
+        ? { upper: libTile(b.tiles.upper), lower: libTile(b.tiles.lower) }
+        : undefined,
   });
 }
+
+/**
+ * A door's material, for its edges: its wood's planks, its copper stage, or iron. The picture of
+ * the door only covers its two broad faces.
+ */
+function doorEdgeBlock(key: string): number {
+  const base = key.replace(/_door$/, '');
+  for (const libId of [`${base}_planks`, base === 'copper' ? 'copper_block' : base, `${base}_block`]) {
+    // Library ids that are the look of a core block (oak planks) live under the core key.
+    const k = LIB_BLOCKS.find((b) => b.id === libId)?.key ?? libId;
+    const i = defs.findIndex((d) => d.key === k);
+    if (i >= 0) return i;
+  }
+  return PLANKS;
+}
+for (const d of defs) if (d.shape === 'door') d.edgeOf = doorEdgeBlock(d.key);
 
 export const BLOCKS: readonly BlockDef[] = defs.map((d, id) => ({ ...d, id }));
 

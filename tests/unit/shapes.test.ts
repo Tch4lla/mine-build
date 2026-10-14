@@ -12,6 +12,7 @@ import {
   shapeBoxes,
 } from '../../src/world/shapes';
 import { LIB_BLOCKS } from '../../src/generated/library';
+import { tileIndex, tileUV } from '../../src/world/tiles';
 
 const id = (key: string) => blockByKey(key)!.id;
 const empty = () => 0;
@@ -132,5 +133,51 @@ describe('targeting outline', () => {
   it('stretches a fence towards the neighbours it joins', () => {
     const w = world({ '0,0,0': id('oak_fence'), '1,0,0': id('oak_fence') });
     expect(targetBounds(w.get, w.state, 0, 0, 0)[3]).toBe(1);
+  });
+});
+
+describe('doors', () => {
+  it('close on the side nearest the player and open against their left', () => {
+    // Placed looking north: closed on the south edge, open against the west side.
+    expect(shapeBoxes({ shape: 'door', state: 0 })[0].box).toEqual([0, 0, 13 / 16, 1, 1, 1]);
+    expect(shapeBoxes({ shape: 'door', state: OPEN })[0].box).toEqual([0, 0, 0, 3 / 16, 1, 1]);
+    // Placed looking east: closed on the west edge.
+    const east = shapeBoxes({ shape: 'door', state: 1 })[0].box;
+    expect(east[0]).toBe(0);
+    expect(east[3]).toBeCloseTo(3 / 16);
+  });
+
+  it('block the doorway when closed and leave it clear when open', () => {
+    const c = new ChunkData(0, 0);
+    c.set(1, 1, 1, id('oak_door'));
+    c.set(1, 2, 1, id('oak_door'), TOP);
+    // Closed: a panel across the whole doorway on its south edge.
+    expect(Array.from(shapeColliderBoxes(c, empty)).slice(0, 6)).toEqual([1, 1, 1 + 13 / 16, 2, 2, 2]);
+    c.set(1, 1, 1, id('oak_door'), OPEN);
+    c.set(1, 2, 1, id('oak_door'), OPEN | TOP);
+    // Open: only a thin panel along the west side, so x 1.1875–2 is free to walk through.
+    const open = Array.from(shapeColliderBoxes(c, empty));
+    expect(open.slice(0, 6)).toEqual([1, 1, 1, 1 + 3 / 16, 2, 2]);
+  });
+
+  it('take their edges from their material', () => {
+    // Oak planks are the library look of the core planks block.
+    expect(blockByKey('oak_door')!.edgeOf).toBe(blockByKey('planks')!.id);
+    expect(blockByKey('birch_door')!.edgeOf).toBe(blockByKey('birch_planks')!.id);
+    expect(blockByKey('copper_door')!.edgeOf).toBe(blockByKey('copper_block')!.id);
+    expect(blockByKey('iron_door')!.edgeOf).toBe(blockByKey('iron_block')!.id);
+  });
+
+  it('draw their edges, top and bottom with that material, not the door picture', () => {
+    const c = new ChunkData(0, 0);
+    c.set(1, 1, 1, id('oak_door'));
+    const m = meshChunk(c, empty).solid;
+    const [eu0, ev0, eu1, ev1] = tileUV(tileIndex(BLOCKS[blockByKey('oak_door')!.edgeOf!].tiles.side));
+    let edgeVerts = 0;
+    for (let i = 0; i < m.uvs.length; i += 2) {
+      const [u, v] = [m.uvs[i], m.uvs[i + 1]];
+      if (u >= eu0 - 1e-6 && u <= eu1 + 1e-6 && v >= ev0 - 1e-6 && v <= ev1 + 1e-6) edgeVerts++;
+    }
+    expect(edgeVerts).toBe(4 * 4); // two sides, top and bottom
   });
 });

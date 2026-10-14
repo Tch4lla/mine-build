@@ -170,6 +170,8 @@ function blockShapeBoxes(
       state: stateAt(x, y, z),
       conn: group ? connections(at, x, y, z, group) : 0,
       box: BLOCKS[id].box,
+      edgeTile: BLOCKS[id].edgeOf !== undefined ? BLOCKS[BLOCKS[id].edgeOf!].tiles.side : undefined,
+      doorTiles: BLOCKS[id].doorTiles,
     },
     collision,
   );
@@ -221,6 +223,14 @@ function faceUV(f: number, px: number, py: number, pz: number): [number, number]
     default:
       return [1 - px, py];
   }
+}
+
+/** Is face f of box b no more than 3/16 wide (a thin panel's edge, top or bottom)? */
+function narrowFace(f: number, b: Box): boolean {
+  const w = [b[3] - b[0], b[4] - b[1], b[5] - b[2]];
+  // The face spans the two axes other than its normal's.
+  const axis = f < 2 ? 0 : f < 4 ? 1 : 2;
+  return w.some((v, i) => i !== axis && v <= 3 / 16 + 1e-6);
 }
 
 /** Is face f of box b on the block's boundary (so a neighbour can hide it)? */
@@ -407,13 +417,14 @@ function emitBoxes(
   at: (x: number, y: number, z: number) => number,
 ): void {
   const bright = BRIGHT[id] === 1;
-  for (const { box: b, vOffset = 0, vScale = 1, tile } of boxes) {
+  for (const { box: b, vOffset = 0, vScale = 1, tile, edgeTile } of boxes) {
     const uvs = tile ? tileUVs(tile) : BLOCK_UVS[id];
     for (let f = 0; f < 6; f++) {
       const face = FACES[f];
       const [nx, ny, nz] = face.n;
       if (onBoundary(f, b) && occludes(at(x + nx, y + ny, z + nz))) continue;
-      const [u0, v0, u1, v1] = uvs[face.tile];
+      const edge = edgeTile !== undefined && narrowFace(f, b);
+      const [u0, v0, u1, v1] = edge ? tileUVs(edgeTile).side : uvs[face.tile];
       const base = out.pos.length / 3;
       for (const [cx, cy, cz] of face.corners) {
         const px = cx ? b[3] : b[0];
@@ -422,7 +433,7 @@ function emitBoxes(
         out.pos.push(x + px, y + py, z + pz);
         out.nor.push(nx, ny, nz);
         const [tu, fv] = faceUV(f, px, py, pz);
-        const tv = ny === 0 ? vOffset + fv * vScale : fv;
+        const tv = ny === 0 && !edge ? vOffset + fv * vScale : fv;
         out.uv.push(u0 + (u1 - u0) * tu, v0 + (v1 - v0) * tv);
         const c = bright ? 1 : face.shade;
         out.col.push(c, c, c);

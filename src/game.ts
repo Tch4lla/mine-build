@@ -1197,16 +1197,14 @@ export class Game implements ScreenHost {
         return;
       }
     }
-    // Doors, trapdoors and gates open and close, and beds are slept in (Shift places against them
-    // instead).
-    if (justPressed && t?.kind === 'block' && !this.input.isDown('ShiftLeft')) {
+    // Doors, trapdoors and gates open and close, and beds are slept in. Holding the button never
+    // places a block against them (that's how a second bed ended up on a bed); Shift does.
+    if (t?.kind === 'block' && !this.input.isDown('ShiftLeft')) {
       const shape = BLOCKS[t.hit.id].shape ?? 'cube';
-      if (OPENABLE.has(shape)) {
-        this.toggleOpen(t.hit.x, t.hit.y, t.hit.z);
-        return;
-      }
-      if (shape === 'bed') {
-        this.sleep(t.hit.x, t.hit.y, t.hit.z);
+      if (OPENABLE.has(shape) || shape === 'bed') {
+        if (!justPressed) return;
+        if (shape === 'bed') this.sleep(t.hit.x, t.hit.y, t.hit.z);
+        else this.toggleOpen(t.hit.x, t.hit.y, t.hit.z);
         return;
       }
     }
@@ -1563,9 +1561,10 @@ export class Game implements ScreenHost {
   // Test / debug helpers (exposed on window.__game)
 
   /** Uses the held item on whatever is under the crosshair (like a right-click). */
-  debugUseHeld(): string | null {
+  /** Uses the held item like a right-click (`justPressed` false: as if the button were held). */
+  debugUseHeld(justPressed = true): string | null {
     this.updateTarget();
-    this.use(this.target, this.inventory.held, stackStats(this.inventory.held), true);
+    this.use(this.target, this.inventory.held, stackStats(this.inventory.held), justPressed);
     return this.target?.kind ?? null;
   }
 

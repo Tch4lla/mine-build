@@ -180,6 +180,17 @@ def block_tiles(entry, atlas: Atlas) -> dict:
         # The box in block space as [x0, y0, z0, x1, y1, z1] (iso a → x, height c → y, b → z).
         box = [round(v, 3) for v in (bx.a0, bx.c0, bx.b0, bx.a1, bx.c1, bx.b1)]
         return {"top": top, "side": side, "bottom": top}, svg, box
+    if entry.shape == "door":
+        # Doors are pictures of a 48 × 88 panel (shapes.door). Crop the panel, ink outline included,
+        # into one full-width tile per block so the picture fills the door edge to edge.
+        def half(y0: float) -> str:
+            return (
+                f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="23.9 {y0} 52.2 46.1" width="52" '
+                f'height="46" preserveAspectRatio="none">{svg}</svg>'
+            )
+
+        tiles = {"sprite": atlas.add(sprite_svg(svg)), "upper": atlas.add(half(3.9)), "lower": atlas.add(half(50))}
+        return tiles, svg, None
     return {"sprite": atlas.add(sprite_svg(svg))}, svg, None
 
 

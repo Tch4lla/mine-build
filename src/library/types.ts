@@ -5,8 +5,13 @@
 
 export type LibHardness = 'Instant' | 'Soft' | 'Firm' | 'Hard' | 'Very hard' | 'Unbreakable' | 'Unknown';
 
-/** Atlas tile indices in public/library/blocks.png: three faces, or one whole-sprite tile. */
-export type LibTiles = { top: number; side: number; bottom: number } | { sprite: number };
+/**
+ * Atlas tile indices in public/library/blocks.png: three faces, or one whole-sprite tile (doors
+ * also have their panel cropped into an upper and a lower tile).
+ */
+export type LibTiles =
+  | { top: number; side: number; bottom: number }
+  | { sprite: number; upper?: number; lower?: number };
 
 export interface LibBlock {
   name: string;
