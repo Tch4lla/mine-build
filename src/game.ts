@@ -22,7 +22,8 @@ import {
 import { raycastVoxels, type VoxelHit } from './world/raycast';
 import { SEA_LEVEL } from './world/terrain';
 import { ATLAS_COLS, TILE_PX, tileIndex } from './world/tiles';
-import { refreshBlockUVs, targetBounds } from './world/chunkMesher';
+import { refreshBlockUVs, targetBoxes } from './world/chunkMesher';
+import { outlineGeometry } from './view/outline';
 import { clearIconCache } from './items/icons';
 import { OPEN, TOP, facingFromYaw, partnerOffset, type BlockShape } from './world/shapes';
 import { Player } from './player/player';
@@ -118,6 +119,8 @@ export class Game implements ScreenHost {
   private showDebug = false;
   private shieldCooldown = 0;
   private spawn = new THREE.Vector3();
+  /** Chests, barrels and shelves: their item slots, by "x,y,z". */
+  private readonly containers = new Map<string, (ItemStack | null)[]>();
   paused = false;
   onPauseRequest: () => void = () => undefined;
   private readonly keyListener: (e: KeyboardEvent) => void;
@@ -177,6 +180,8 @@ export class Game implements ScreenHost {
       // meshed both ways up, see chunkMesher).
       side: THREE.FrontSide,
     });
+    withBlockLight(solid);
+    withBlockLight(water);
     this.world = new World(meta.seed, this.physics, solid, water);
     this.world.loadModifiedChunks(chunks);
     this.world.renderDistance = settings.renderDistance;
@@ -206,8 +211,8 @@ export class Game implements ScreenHost {
     );
 
     this.highlight = new THREE.LineSegments(
-      // A unit box, scaled to the aimed-at block's shape in updateTarget().
-      new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1)),
+      // Traces the aimed-at block's shape (see outlineGeometry).
+      outlineGeometry(null),
       new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.55 }),
     );
     this.highlight.visible = false;
@@ -343,6 +348,7 @@ export class Game implements ScreenHost {
     for (const d of m.dummies ?? []) this.mobs.spawnDummy(new THREE.Vector3().fromArray(d.pos), d.yaw);
     this.photos.load(m.frames ?? [], m.photoBlocks ?? []);
     this.dropped.load(m.dropped ?? []);
+    for (const c of m.containers ?? []) this.containers.set(c.pos.join(','), c.slots);
     this.hud.renderHotbar(this.inventory);
   }
 
@@ -892,17 +898,17 @@ export class Game implements ScreenHost {
     this.target = best;
     if (best?.kind === 'block' && !this.tether.held) {
       const { x, y, z } = best.hit;
-      const b = targetBounds(
+      const boxes = targetBoxes(
         (bx, by, bz) => this.world.getBlock(bx, by, bz),
         (bx, by, bz) => this.world.getBlockState(bx, by, bz),
         x,
         y,
         z,
       );
-      const pad = 0.004;
-      this.highlight.visible = true;
-      this.highlight.scale.set(b[3] - b[0] + pad, b[4] - b[1] + pad, b[5] - b[2] + pad);
-      this.highlight.position.set(x + (b[0] + b[3]) / 2, y + (b[1] + b[4]) / 2, z + (b[2] + b[5]) / 2);
+      // Pictures (plants, torches, signs) get no outline; the name label is enough.
+      this.highlight.visible = !boxes || boxes.length > 0;
+      this.highlight.geometry = outlineGeometry(boxes);
+      this.highlight.position.set(x, y, z);
     } else this.highlight.visible = false;
 
     let label = '';
@@ -1062,6 +1068,12 @@ export class Game implements ScreenHost {
     const b = BLOCKS[id];
     // Doors and beds are two blocks: take the other half too (it drops nothing of its own).
     const partner = this.partnerOf(x, y, z);
+    // A broken chest spills what it held.
+    const key = `${x},${y},${z}`;
+    for (const stack of this.containers.get(key) ?? [])
+      if (stack)
+        this.dropped.drop(stack, new THREE.Vector3(x + 0.5, y + 0.5, z + 0.5), new THREE.Vector3(0, 2, 0));
+    this.containers.delete(key);
     // Neighbouring water flows in and unsupported sand falls via BlockUpdates.
     this.world.setBlock(x, y, z, AIR);
     if (partner) this.world.setBlock(partner[0], partner[1], partner[2], AIR);
@@ -1201,9 +1213,11 @@ export class Game implements ScreenHost {
     // places a block against them (that's how a second bed ended up on a bed); Shift does.
     if (t?.kind === 'block' && !this.input.isDown('ShiftLeft')) {
       const shape = BLOCKS[t.hit.id].shape ?? 'cube';
-      if (OPENABLE.has(shape) || shape === 'bed') {
+      const storage = BLOCKS[t.hit.id].storage;
+      if (OPENABLE.has(shape) || shape === 'bed' || storage) {
         if (!justPressed) return;
-        if (shape === 'bed') this.sleep(t.hit.x, t.hit.y, t.hit.z);
+        if (storage) this.openContainer(t.hit.x, t.hit.y, t.hit.z);
+        else if (shape === 'bed') this.sleep(t.hit.x, t.hit.y, t.hit.z);
         else this.toggleOpen(t.hit.x, t.hit.y, t.hit.z);
         return;
       }
@@ -1344,6 +1358,16 @@ export class Game implements ScreenHost {
     if (partner) this.world.setBlock(partner[0], partner[1], partner[2], id, state ^ TOP);
     this.world.flushDirtyNear(new THREE.Vector3(x, y, z));
     this.viewmodel.doSwing();
+  }
+
+  /** Opens a chest, barrel or shelf: its slots beside the player's inventory. */
+  private openContainer(x: number, y: number, z: number): void {
+    const b = BLOCKS[this.world.getBlock(x, y, z)];
+    if (!b.storage) return;
+    const key = `${x},${y},${z}`;
+    let slots = this.containers.get(key);
+    if (!slots) this.containers.set(key, (slots = new Array(b.storage).fill(null)));
+    this.screens.show('container', { title: b.name, slots });
   }
 
   /** The other half of a two-block door or bed, if it is still there. */
@@ -1526,6 +1550,9 @@ export class Game implements ScreenHost {
     m.photoBlocks = this.photos.photoBlockList;
     m.dummies = this.mobs.serializeDummies();
     m.dropped = this.dropped.serialize();
+    m.containers = [...this.containers]
+      .filter(([, slots]) => slots.some(Boolean))
+      .map(([k, slots]) => ({ pos: k.split(',').map(Number), slots }));
     m.timeOfDay = this.sky.time;
     m.creative = p.creative;
     return m;
@@ -1592,6 +1619,14 @@ export class Game implements ScreenHost {
     const { x, y, z } = t.hit;
     const id = this.world.getBlock(x, y, z);
     return { key: BLOCKS[id]?.key ?? '?', id, state: this.world.getBlockState(x, y, z), x, y, z };
+  }
+
+  /** Opens the container under the crosshair (chest, barrel, shelf); false if there is none. */
+  debugOpenContainer(): boolean {
+    const info = this.debugBlockInfo();
+    if (!info || !BLOCKS[info.id].storage) return false;
+    this.openContainer(info.x, info.y, info.z);
+    return true;
   }
 
   /** Sets the state bits (0–15) of the block under the crosshair, keeping the block. */
@@ -1669,6 +1704,28 @@ export class Game implements ScreenHost {
     const pos = this.player.position.clone().add(offset);
     return this.contraptions.spawn(PARTS[id].id, pos);
   }
+}
+
+/**
+ * Lets a chunk material glow where torches, lanterns and fire light it: the mesher's per-vertex
+ * `blockLight` (0–1) adds a warm emissive wash on top of the toon lighting, so lit places stand out
+ * at night and only brighten a little by day.
+ */
+function withBlockLight(m: THREE.Material): void {
+  m.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace(
+        '#include <common>',
+        '#include <common>\nattribute float blockLight;\nvarying float vBlockLight;',
+      )
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvBlockLight = blockLight;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying float vBlockLight;')
+      .replace(
+        '#include <emissivemap_fragment>',
+        '#include <emissivemap_fragment>\ntotalEmissiveRadiance += diffuseColor.rgb * vec3(1.0, 0.78, 0.52) * pow(vBlockLight, 1.4) * 1.1;',
+      );
+  };
 }
 
 /** Blocks that right-click opens and closes. */

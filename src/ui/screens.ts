@@ -19,7 +19,13 @@ export interface ScreenHost {
   importPhotoBlob(blob: Blob, w: number, h: number, name: string): Promise<void>;
 }
 
-export type ScreenName = 'inventory' | 'workbench' | 'gallery' | 'help';
+export type ScreenName = 'inventory' | 'workbench' | 'gallery' | 'help' | 'container';
+
+/** A chest, barrel or shelf opened beside the player's inventory: its slots are edited in place. */
+export interface Container {
+  title: string;
+  slots: (ItemStack | null)[];
+}
 
 abstract class Screen {
   readonly el: HTMLElement;
@@ -63,6 +69,25 @@ class Tooltip {
   }
 }
 
+/** Puts a stack into a list of slots (merging first, then the first empty slot); returns what's left. */
+function addTo(slots: (ItemStack | null)[], stack: ItemStack): ItemStack | null {
+  let left = stack.count;
+  const max = item(stack.id).maxStack;
+  for (const s of slots)
+    if (s && left > 0 && canMerge(s, stack) && s.count < max) {
+      const n = Math.min(left, max - s.count);
+      s.count += n;
+      left -= n;
+    }
+  for (let i = 0; i < slots.length && left > 0; i++)
+    if (!slots[i]) {
+      const n = Math.min(left, max);
+      slots[i] = { ...stack, count: n };
+      left -= n;
+    }
+  return left > 0 ? { ...stack, count: left } : null;
+}
+
 /** Creative catalogue groups, in order: block categories from the sprite library, then items. */
 const GROUP_ORDER = [
   'Basics',
@@ -102,34 +127,47 @@ class InventoryScreen extends Screen {
     this.tooltip.move(e);
   };
 
-  constructor(host: ScreenHost, close: () => void) {
+  constructor(
+    host: ScreenHost,
+    close: () => void,
+    private readonly container?: Container,
+  ) {
     super(host, close);
     document.body.append(this.cursorEl);
     window.addEventListener('mousemove', this.moveListener);
     if (host.creative) this.tab = 'creative';
   }
 
-  private slotEl(index: number): HTMLElement {
-    const inv = this.host.inventory;
-    const el = h('div', { class: 'slot' });
-    renderSlot(el, inv.slots[index]);
+  /** A slot of the player's inventory, or of the open container when `inBox`. */
+  private slotEl(index: number, inBox = false): HTMLElement {
+    const slots = inBox ? this.container!.slots : this.host.inventory.slots;
+    const el = h('div', { class: 'slot', 'data-box': inBox ? 'container' : 'player' });
+    renderSlot(el, slots[index]);
     el.addEventListener('mousedown', (e) => {
       e.preventDefault();
-      this.clickSlot(index, e.button === 2, e.shiftKey);
+      this.clickSlot(index, e.button === 2, e.shiftKey, inBox);
     });
     el.addEventListener('contextmenu', (e) => e.preventDefault());
     el.addEventListener('mouseenter', (e) => {
-      const s = inv.slots[index];
+      const s = slots[index];
       if (s) this.tooltip.show(s, e);
     });
     el.addEventListener('mouseleave', () => this.tooltip.hide());
     return el;
   }
 
-  private clickSlot(i: number, right: boolean, shift: boolean): void {
-    const inv = this.host.inventory;
+  private clickSlot(i: number, right: boolean, shift: boolean, inBox = false): void {
+    const inv = { slots: inBox ? this.container!.slots : this.host.inventory.slots };
     const slot = inv.slots[i];
-    if (shift && slot && !this.cursor) {
+    if (shift && slot && !this.cursor && this.container) {
+      // With a container open, Shift-click moves a stack across: into the chest, or back out.
+      if (inBox) {
+        const left = this.host.inventory.add(slot);
+        inv.slots[i] = left > 0 ? { ...slot, count: left } : null;
+      } else {
+        inv.slots[i] = addTo(this.container.slots, slot);
+      }
+    } else if (shift && slot && !this.cursor) {
       // Quick-move between hotbar and backpack.
       const range = i < HOTBAR_SIZE ? [HOTBAR_SIZE, INVENTORY_SIZE] : [0, HOTBAR_SIZE];
       for (let j = range[0]; j < range[1]; j++) {
@@ -168,12 +206,14 @@ class InventoryScreen extends Screen {
       inv.slots[i] = this.cursor;
       this.cursor = slot;
     }
-    inv.changed();
+    this.host.inventory.changed();
     this.render();
   }
 
   render(): void {
     const inv = this.host.inventory;
+    // The slot under the mouse may have just changed, so don't leave its old tooltip up.
+    this.tooltip.hide();
     clear(this.el);
     const panel = h('div', { class: 'panel' });
     const left = h('div');
@@ -207,6 +247,17 @@ class InventoryScreen extends Screen {
     );
 
     const right = h('div');
+    if (this.container) {
+      right.append(h('h2', {}, this.container.title));
+      const box = h('div', { class: 'grid', 'data-testid': 'container-grid' });
+      for (let i = 0; i < this.container.slots.length; i++) box.append(this.slotEl(i, true));
+      right.append(box, h('p', { class: 'small muted' }, 'Shift-click moves a stack between the two.'));
+      panel.append(h('div', { class: 'inv-layout' }, left, right));
+      this.el.append(panel);
+      renderSlot(this.cursorEl, this.cursor);
+      this.cursorEl.classList.toggle('hidden', !this.cursor);
+      return;
+    }
     const tabs = h('div', { class: 'tabs' });
     const mkTab = (id: 'crafting' | 'creative', label: string) =>
       h(
@@ -801,16 +852,16 @@ export class Screens {
     return this.current?.name ?? null;
   }
 
-  show(name: ScreenName): void {
-    if (this.current?.name === name) {
+  show(name: ScreenName, container?: Container): void {
+    if (this.current?.name === name && !container) {
       this.hide();
       return;
     }
     this.hide(false);
     const close = () => this.hide();
     const screen =
-      name === 'inventory'
-        ? new InventoryScreen(this.host, close)
+      name === 'inventory' || name === 'container'
+        ? new InventoryScreen(this.host, close, name === 'container' ? container : undefined)
         : name === 'workbench'
           ? new WorkbenchScreen(this.host, close)
           : name === 'gallery'

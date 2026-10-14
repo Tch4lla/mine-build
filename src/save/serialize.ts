@@ -26,6 +26,8 @@ export interface WorldMeta {
   photoBlocks?: PhotoBlockData[];
   dummies?: { pos: number[]; yaw: number }[];
   dropped?: { stack: ItemStack; pos: number[] }[];
+  /** Contents of chests, barrels and shelves, by block position. */
+  containers?: { pos: number[]; slots: (ItemStack | null)[] }[];
 }
 
 export interface ExportBundle {
@@ -59,6 +61,8 @@ export function referencedPhotoIds(meta: WorldMeta): Set<string> {
   for (const b of meta.photoBlocks ?? []) ids.add(b.photoId);
   for (const s of meta.inventory?.slots ?? []) if (s?.data?.photoId) ids.add(s.data.photoId);
   for (const d of meta.dropped ?? []) if (d.stack.data?.photoId) ids.add(d.stack.data.photoId);
+  for (const c of meta.containers ?? [])
+    for (const s of c.slots) if (s?.data?.photoId) ids.add(s.data.photoId);
   return ids;
 }
 

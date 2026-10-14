@@ -122,10 +122,11 @@ export function shapeBoxes(
     case 'slab':
       return wrap([top ? [0, 0.5, 0, 1, 1, 1] : [0, 0, 0, 1, 0.5, 1]]);
     case 'stairs': {
-      // Facing north: the step rises on the far (north) side.
-      const base: Box = top ? [0, 0.5, 0, 1, 1, 1] : [0, 0, 0, 1, 0.5, 1];
-      const step: Box = top ? [0, 0, 0, 1, 0.5, 0.5] : [0, 0.5, 0, 1, 1, 0.5];
-      return wrap([base, rotateBox(step, f)]);
+      // Facing north: the step rises on the far (north) side. Two boxes that don't overlap (a
+      // full-height back half and a half-height front), so the outline has no seam on the back.
+      const back: Box = [0, 0, 0, 1, 1, 0.5];
+      const front: Box = top ? [0, 0.5, 0.5, 1, 1, 1] : [0, 0, 0.5, 1, 0.5, 1];
+      return wrap([rotateBox(back, f), rotateBox(front, f)]);
     }
     case 'fence': {
       const h = collision ? 1.5 : 1;

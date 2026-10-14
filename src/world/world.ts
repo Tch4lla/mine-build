@@ -1,7 +1,8 @@
 /** Loads, meshes, collides and unloads chunks around points of interest. */
 import * as THREE from 'three';
-import { AIR, FULL_SOLID, IS_SOLID } from './blocks';
-import { CHUNK_HEIGHT, CHUNK_SIZE, ChunkData, chunkKey } from './chunk';
+import { AIR, FULL_SOLID, IS_OPAQUE, IS_SOLID, LIGHT } from './blocks';
+import { spreadLight, type LightSource } from './light';
+import { CHUNK_HEIGHT, CHUNK_SIZE, ChunkData, MAX_BLOCK_ID, blockIndex, chunkKey } from './chunk';
 import { exposedSolidVoxels, meshChunk, shapeColliderBoxes, type MeshData } from './chunkMesher';
 import { TerrainGenerator } from './terrain';
 import { RAPIER, GROUPS, type Physics } from '../physics/physicsWorld';
@@ -11,6 +12,8 @@ interface ChunkEntry {
   solid?: THREE.Mesh;
   water?: THREE.Mesh;
   collider?: RAPIER.Collider;
+  /** Light-giving blocks in this chunk: cell index → light level. */
+  lights: Map<number, number>;
   /** Triangle-mesh collider for solid blocks that aren't full cubes (slabs, stairs, fences...). */
   shapeCollider?: RAPIER.Collider;
   meshDirty: boolean;
@@ -83,8 +86,9 @@ export class World {
       const saved = this.modified.get(k);
       const data = saved ? new ChunkData(cx, cz, saved) : this.generator.generate(cx, cz);
       if (saved) this.modified.set(k, data.blocks);
-      e = { data, meshDirty: true, colliderDirty: true };
+      e = { data, lights: findLights(data), meshDirty: true, colliderDirty: true };
       this.chunks.set(k, e);
+      if (e.lights.size) this.relightAround(cx, cz);
       // Neighbours need remeshing so faces along the shared border are correct.
       for (const [dx, dz] of [
         [1, 0],
@@ -136,6 +140,11 @@ export class World {
     const old = e.data.get(lx, y, lz);
     if (old === id && e.data.getState(lx, y, lz) === state) return false;
     e.data.set(lx, y, lz, id, state);
+    const cell = blockIndex(lx, y, lz);
+    if (LIGHT[id]) e.lights.set(cell, LIGHT[id]);
+    else e.lights.delete(cell);
+    // Light reaches 15 blocks, so a change near any light can relight the chunks around it.
+    if (LIGHT[id] || LIGHT[old] || this.lightsNear(cx, cz)) this.relightAround(cx, cz);
     e.meshDirty = true;
     e.colliderDirty = true;
     const k = chunkKey(cx, cz);
@@ -154,6 +163,48 @@ export class World {
     if (lz === CHUNK_SIZE - 1) touch(cx, cz + 1);
     for (const fn of this.listeners) fn(x, y, z, old, id);
     return true;
+  }
+
+  /** Whether any loaded chunk in the 3×3 around (cx, cz) has a light-giving block. */
+  private lightsNear(cx: number, cz: number): boolean {
+    for (let dz = -1; dz <= 1; dz++)
+      for (let dx = -1; dx <= 1; dx++)
+        if (this.chunks.get(chunkKey(cx + dx, cz + dz))?.lights.size) return true;
+    return false;
+  }
+
+  /** Marks the 3×3 chunks around (cx, cz) for remeshing, as their light may have changed. */
+  private relightAround(cx: number, cz: number): void {
+    for (let dz = -1; dz <= 1; dz++)
+      for (let dx = -1; dx <= 1; dx++) {
+        const n = this.chunks.get(chunkKey(cx + dx, cz + dz));
+        if (n) n.meshDirty = true;
+      }
+  }
+
+  /** Block light for a chunk being meshed: spread from light-giving blocks within 15 blocks. */
+  private lightFor(e: ChunkEntry) {
+    const { cx, cz } = e.data;
+    const sources: LightSource[] = [];
+    for (let dz = -1; dz <= 1; dz++)
+      for (let dx = -1; dx <= 1; dx++) {
+        const n = this.chunks.get(chunkKey(cx + dx, cz + dz));
+        if (!n) continue;
+        for (const [i, level] of n.lights) {
+          const x = i % CHUNK_SIZE;
+          const z = Math.floor(i / CHUNK_SIZE) % CHUNK_SIZE;
+          const y = Math.floor(i / (CHUNK_SIZE * CHUNK_SIZE));
+          sources.push({ x: x + dx * CHUNK_SIZE, y, z: z + dz * CHUNK_SIZE, level });
+        }
+      }
+    if (!sources.length) return undefined;
+    const ox = cx * CHUNK_SIZE;
+    const oz = cz * CHUNK_SIZE;
+    return spreadLight(
+      sources,
+      (x, y, z) => this.getBlock(ox + x, y, oz + z),
+      (id) => IS_OPAQUE[id] === 1,
+    );
   }
 
   /** Highest solid block at (x, z), or -1. Generates the chunk if needed. */
@@ -283,13 +334,14 @@ export class World {
     g.setAttribute('normal', new THREE.BufferAttribute(m.normals, 3));
     g.setAttribute('uv', new THREE.BufferAttribute(m.uvs, 2));
     g.setAttribute('color', new THREE.BufferAttribute(m.colors, 3));
+    g.setAttribute('blockLight', new THREE.BufferAttribute(m.lights, 1));
     g.setIndex(new THREE.BufferAttribute(m.indices, 1));
     g.computeBoundingSphere();
     return g;
   }
 
   private remesh(e: ChunkEntry): void {
-    const { solid, water } = meshChunk(e.data, this.sampler(e.data.cx, e.data.cz));
+    const { solid, water } = meshChunk(e.data, this.sampler(e.data.cx, e.data.cz), this.lightFor(e));
     const place = (old: THREE.Mesh | undefined, m: MeshData, mat: THREE.Material, order: number) => {
       if (old) {
         old.geometry.dispose();
@@ -378,4 +430,15 @@ function boxesToTrimesh(boxes: Float32Array): [Float32Array, Uint32Array] {
     for (let t = 0; t < 36; t++) idx[i * 36 + t] = i * 8 + TRIS[t];
   }
   return [verts, idx];
+}
+
+/** Light-giving blocks of a chunk (cell index → level). */
+function findLights(data: ChunkData): Map<number, number> {
+  const out = new Map<number, number>();
+  const b = data.blocks;
+  for (let i = 0; i < b.length; i++) {
+    const level = LIGHT[b[i] & MAX_BLOCK_ID];
+    if (level) out.set(i, level);
+  }
+  return out;
 }

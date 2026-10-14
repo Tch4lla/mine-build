@@ -13,6 +13,7 @@ import {
 } from '../../src/world/shapes';
 import { LIB_BLOCKS } from '../../src/generated/library';
 import { tileIndex, tileUV } from '../../src/world/tiles';
+import { outlineGeometry } from '../../src/view/outline';
 
 const id = (key: string) => blockByKey(key)!.id;
 const empty = () => 0;
@@ -34,8 +35,12 @@ describe('block shapes', () => {
   it('builds slabs, stairs and doors from their state', () => {
     expect(shapeBoxes({ shape: 'slab', state: 0 })[0].box).toEqual([0, 0, 0, 1, 0.5, 1]);
     expect(shapeBoxes({ shape: 'slab', state: TOP })[0].box).toEqual([0, 0.5, 0, 1, 1, 1]);
+    // Looking east: a full-height back half to the east, a half-height front to the west.
     const stairsEast = shapeBoxes({ shape: 'stairs', state: 1 }).map((b) => b.box);
-    expect(stairsEast).toContainEqual([0.5, 0.5, 0, 1, 1, 1]);
+    expect(stairsEast).toEqual([
+      [0.5, 0, 0, 1, 1, 1],
+      [0, 0, 0, 0.5, 0.5, 1],
+    ]);
     const door = shapeBoxes({ shape: 'door', state: TOP })[0];
     expect(door.vOffset).toBe(0.5);
     expect(shapeBoxes({ shape: 'door', state: OPEN })[0].box[3]).toBeLessThan(0.25);
@@ -179,5 +184,35 @@ describe('doors', () => {
       if (u >= eu0 - 1e-6 && u <= eu1 + 1e-6 && v >= ev0 - 1e-6 && v <= ev1 + 1e-6) edgeVerts++;
     }
     expect(edgeVerts).toBe(4 * 4); // two sides, top and bottom
+  });
+});
+
+describe('targeting outline geometry', () => {
+  const segments = (g: { getAttribute(n: string): { array: ArrayLike<number> } }) => {
+    const a = g.getAttribute('position').array;
+    const out: number[][] = [];
+    for (let i = 0; i < a.length; i += 6) out.push(Array.from(a).slice(i, i + 6));
+    return out;
+  };
+  it('traces stairs: the step edge, but no seam across the back', () => {
+    const segs = segments(outlineGeometry(shapeBoxes({ shape: 'stairs', state: 0 }).map((b) => b.box)));
+    const near = (a: number, b: number) => Math.abs(a - b) < 0.01;
+    // The step's front edge runs along x at y = 1, z = 0.5.
+    expect(
+      segs.some(([, y0, z0, , y1, z1]) => near(y0, 1) && near(y1, 1) && near(z0, 0.5) && near(z1, 0.5)),
+    ).toBe(true);
+    // No line along x across the back face (z = 0) at half height.
+    expect(
+      segs.some(
+        ([x0, y0, z0, x1, y1, z1]) =>
+          near(z0, 0) && near(z1, 0) && near(y0, 0.5) && near(y1, 0.5) && x0 !== x1,
+      ),
+    ).toBe(false);
+  });
+  it('is empty for pictures (plants, torches) instead of failing', () => {
+    expect(outlineGeometry([]).getAttribute('position')).toBeUndefined();
+  });
+  it('is a plain box for full cubes', () => {
+    expect(segments(outlineGeometry(null))).toHaveLength(12);
   });
 });

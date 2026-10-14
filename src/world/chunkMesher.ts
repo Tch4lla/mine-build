@@ -3,6 +3,7 @@
  * Produces separate buffers for solid/cutout geometry and translucent geometry (water).
  */
 import { BLOCKS, FULL_SOLID, IS_SOLID, RENDER, WATER_STRENGTH } from './blocks';
+import type { LightSampler } from './light';
 import { connectGroup, shapeBoxes, type BlockShape, type Box, type ShapeBox } from './shapes';
 import { CHUNK_HEIGHT, CHUNK_SIZE, ChunkData, MAX_BLOCK_ID } from './chunk';
 import { tileIndex, tileUV } from './tiles';
@@ -12,6 +13,8 @@ export interface MeshData {
   normals: Float32Array;
   uvs: Float32Array;
   colors: Float32Array;
+  /** Block light (torches, lanterns...) per vertex, 0–1. */
+  lights: Float32Array;
   indices: Uint32Array;
 }
 
@@ -178,6 +181,26 @@ function blockShapeBoxes(
 }
 
 /**
+ * The boxes (block space) a block is drawn with, for its targeting outline: null for full cubes,
+ * empty for pictures (plants, torches, signs), which get no outline.
+ */
+export function targetBoxes(
+  getBlock: (x: number, y: number, z: number) => number,
+  getState: (x: number, y: number, z: number) => number,
+  x: number,
+  y: number,
+  z: number,
+): Box[] | null {
+  const id = getBlock(x, y, z);
+  const shape = SHAPE[id] ?? 'cube';
+  if (shape === 'cube') return null;
+  if (shape === 'cross' || shape === 'flat') return [];
+  const at = (dx: number, dy: number, dz: number) => getBlock(x + dx, y + dy, z + dz);
+  const st = (dx: number, dy: number, dz: number) => getState(x + dx, y + dy, z + dz);
+  return blockShapeBoxes(st, at, 0, 0, 0, id, false).map((b) => b.box);
+}
+
+/**
  * The box (block space, [x0, y0, z0, x1, y1, z1]) that outlines a block when the player aims at
  * it: the union of its drawn boxes, a slim upright box for plants and signs, the full cell for
  * cubes.
@@ -256,6 +279,10 @@ class Builder {
   nor: number[] = [];
   uv: number[] = [];
   col: number[] = [];
+  /** Block light per vertex, 0–1. */
+  li: number[] = [];
+  /** Block light for the shaped block being emitted (all its vertices). */
+  light = 0;
   idx: number[] = [];
   get faceCount(): number {
     return this.idx.length / 6;
@@ -266,6 +293,7 @@ class Builder {
       normals: new Float32Array(this.nor),
       uvs: new Float32Array(this.uv),
       colors: new Float32Array(this.col),
+      lights: new Float32Array(this.li),
       indices: new Uint32Array(this.idx),
     };
   }
@@ -292,7 +320,11 @@ function waterSurface(strength: number, waterAbove: boolean): number {
   return Math.max(0.12, (strength / 8) * 0.88);
 }
 
-export function meshChunk(chunk: ChunkData, sample: BlockSampler): { solid: MeshData; water: MeshData } {
+export function meshChunk(
+  chunk: ChunkData,
+  sample: BlockSampler,
+  lightAt?: LightSampler,
+): { solid: MeshData; water: MeshData } {
   const solid = new Builder();
   const water = new Builder();
   const S = CHUNK_SIZE;
@@ -321,6 +353,7 @@ export function meshChunk(chunk: ChunkData, sample: BlockSampler): { solid: Mesh
         const r = RENDER[id];
         if (r === 0 || r === 4) continue;
         if (SHAPE[id] !== 'cube') {
+          solid.light = lightAt ? lightAt(x, y, z) / 15 : 0;
           if (SHAPE[id] === 'cross') emitCross(solid, x, y, z, BLOCK_UVS[id].side, BRIGHT[id] ? 1 : 0.92);
           else if (SHAPE[id] === 'flat')
             emitFlat(solid, x, y, z, BLOCK_UVS[id].side, chunk.getState(x, y, z) & 1, BRIGHT[id] ? 1 : 0.92);
@@ -389,6 +422,9 @@ export function meshChunk(chunk: ChunkData, sample: BlockSampler): { solid: Mesh
             ao.push(level);
             const b = BRIGHT[id] ? 1 : AO_LEVEL[level] * face.shade;
             out.col.push(b, b, b);
+            out.li.push(
+              lightAt ? cornerLight(lightAt, at, x + nx, y + ny, z + nz, nx, ny, nz, cx, cy, cz) : 0,
+            );
           }
           // Flip the quad diagonal to avoid anisotropic AO artifacts.
           if (ao[0] + ao[2] < ao[1] + ao[3]) {
@@ -404,6 +440,39 @@ export function meshChunk(chunk: ChunkData, sample: BlockSampler): { solid: Mesh
     }
   }
   return { solid: solid.build(), water: water.build() };
+}
+
+/**
+ * Light at one corner of a cube face: the average over the cell in front of the face and the
+ * (non-opaque) cells beside it towards that corner, so light fades smoothly across faces.
+ */
+function cornerLight(
+  lightAt: LightSampler,
+  at: (x: number, y: number, z: number) => number,
+  ox: number,
+  oy: number,
+  oz: number,
+  nx: number,
+  ny: number,
+  nz: number,
+  cx: number,
+  cy: number,
+  cz: number,
+): number {
+  const tx = nx === 0 ? (cx === 1 ? 1 : -1) : 0;
+  const ty = ny === 0 ? (cy === 1 ? 1 : -1) : 0;
+  const tz = nz === 0 ? (cz === 1 ? 1 : -1) : 0;
+  // The two tangent steps and their diagonal, as in the ambient occlusion above.
+  const a: [number, number, number] = nx !== 0 ? [0, ty, 0] : [tx, 0, 0];
+  const b: [number, number, number] = nz !== 0 ? [0, ty, 0] : [0, 0, tz];
+  let sum = lightAt(ox, oy, oz);
+  let n = 1;
+  for (const [dx, dy, dz] of [a, b, [a[0] + b[0], a[1] + b[1], a[2] + b[2]]]) {
+    if (occludes(at(ox + dx, oy + dy, oz + dz))) continue;
+    sum += lightAt(ox + dx, oy + dy, oz + dz);
+    n++;
+  }
+  return sum / n / 15;
 }
 
 /** Boxes of a shaped block, with faces against an opaque neighbour left out. */
@@ -437,6 +506,7 @@ function emitBoxes(
         out.uv.push(u0 + (u1 - u0) * tu, v0 + (v1 - v0) * tv);
         const c = bright ? 1 : face.shade;
         out.col.push(c, c, c);
+        out.li.push(out.light);
       }
       out.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
     }
@@ -489,6 +559,7 @@ function emitQuads(
       out.nor.push(0, 1, 0);
       out.uv.push(u0 + (u1 - u0) * cu, v0 + (v1 - v0) * cv);
       out.col.push(shade, shade, shade);
+      out.li.push(out.light);
     }
     out.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
     out.idx.push(base, base + 2, base + 1, base, base + 3, base + 2);

@@ -52,6 +52,8 @@ export interface BlockDef {
   category?: string;
   /** Sprite-library block this was made from. */
   lib?: LibBlock;
+  /** Storage blocks: how many item slots they hold. */
+  storage?: number;
   /** Doors: the block whose side tile covers their edges, top and bottom (their material). */
   edgeOf?: number;
   /** Doors: the picture of the panel's upper and lower halves. */
@@ -268,6 +270,7 @@ export const LAMP = def({
   solid: true,
   hardness: 0.5,
   tool: 'none',
+  light: 15,
 });
 export const PHOTO = def({
   key: 'photo_block',
@@ -350,6 +353,9 @@ function libShape(b: LibBlock): BlockShape {
   }
 }
 
+/** Light for library blocks the sheet lists at 0 that should glow: campfires and candles. */
+const LIGHT_OVERRIDE = (key: string): number => (key === 'campfire' ? 15 : /candle$/.test(key) ? 6 : 0);
+
 /** Shapes the player walks through. */
 const WALK_THROUGH = new Set([
   'plant',
@@ -383,7 +389,8 @@ for (const b of [...LIB_BLOCKS].sort((a, c) => a.blockId - c.blockId)) {
     gravity: b.falls,
     shape,
     box: b.box,
-    light: b.light,
+    light: b.light || LIGHT_OVERRIDE(b.key),
+    storage: b.key === 'chest' || b.key === 'barrel' ? 27 : b.shape === 'shelf' ? 9 : undefined,
     category: b.category,
     lib: b,
     doorTiles:
