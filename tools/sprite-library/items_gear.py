@@ -9,7 +9,9 @@ from __future__ import annotations
 import math
 
 from geometry import INK, shade
-from itemkit import DARK, EDGE, HI, LIGHT, MID, OUT, glint
+from itemkit import DARK, EDGE, HI, LIGHT, MID, OUT, Ci, R, clipped, fill, glint, line_part, sil, toned, turned
+from itemkit import Pd as P
+from itemkit import lit as _lit
 from materials import DYES
 
 WOOD = "#a8804e"
@@ -24,56 +26,6 @@ TIERS = {
     "golden": ("#efc85a", "metal"),
     "diamond": ("#7fd6d6", "gem"),
 }
-
-_clip = [0]
-
-
-def _cid() -> str:
-    _clip[0] += 1
-    return f"g{_clip[0]}"
-
-
-def sil(*shapes: str) -> str:
-    """Thick ink outline beneath a set of shapes (each an SVG element without fill)."""
-    return f'<g fill="{INK}" stroke="{INK}" stroke-width="{OUT * 2}" stroke-linejoin="round" stroke-linecap="round">{"".join(shapes)}</g>'
-
-
-def fill(shape: str, color: str, edge=True) -> str:
-    """Insert a fill (and optional thin inner edge) into a bare SVG element."""
-    e = f' stroke="{INK}" stroke-width="{EDGE}" stroke-linejoin="round" stroke-opacity="0.75"' if edge else ""
-    return shape.replace("/>", f' fill="{color}"{e}/>', 1)
-
-
-def P(d: str) -> str:
-    return f'<path d="{d}"/>'
-
-
-def R(x, y, w, h, rx=0) -> str:
-    return f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="{rx}"/>'
-
-
-def Ci(x, y, r) -> str:
-    return f'<circle cx="{x}" cy="{y}" r="{r}"/>'
-
-
-def clipped(shape_d: str, inner: str) -> str:
-    cid = _cid()
-    return f'<clipPath id="{cid}"><path d="{shape_d}"/></clipPath><g clip-path="url(#{cid})">{inner}</g>'
-
-
-def toned(shape_d: str, color: str, light_d: str | None = None, dark_d: str | None = None) -> str:
-    """A shape in the mid tone with lighter/darker facets clipped inside it."""
-    out = fill(P(shape_d), shade(color, MID))
-    inner = ""
-    if light_d:
-        inner += f'<path d="{light_d}" fill="{shade(color, LIGHT)}"/>'
-    if dark_d:
-        inner += f'<path d="{dark_d}" fill="{shade(color, DARK)}"/>'
-    if inner:
-        out += clipped(shape_d, inner)
-        out += f'<path d="{shape_d}" fill="none" stroke="{INK}" stroke-width="{EDGE}" stroke-opacity="0.75" stroke-linejoin="round"/>'
-    return out
-
 
 def surface(kind: str, color: str, shape_d: str, box: tuple[float, float, float, float]) -> str:
     """Tier surface detail inside a head shape. box = (x0, y0, x1, y1) of the shape."""
@@ -97,10 +49,6 @@ def surface(kind: str, color: str, shape_d: str, box: tuple[float, float, float,
     if kind in ("metal", "gem"):
         out += glint(x0 + w * 0.3, y0 + h * 0.3, 4 if kind == "metal" else 5)
     return out
-
-
-def turned(body: str) -> str:
-    return f'<g transform="rotate(45 50 50)">{body}</g>'
 
 
 # --- tools --------------------------------------------------------------------------------------
@@ -227,17 +175,6 @@ ARMOUR_SHAPES = {
 }
 
 
-def _lit(shape_d: str, color: str) -> str:
-    """Left-light / right-dark toon lighting for a front-facing piece."""
-    out = fill(P(shape_d), shade(color, MID))
-    out += clipped(
-        shape_d,
-        f'<rect x="-10" y="-10" width="52" height="120" fill="{shade(color, LIGHT)}"/>'
-        f'<rect x="64" y="-10" width="60" height="120" fill="{shade(color, DARK)}"/>',
-    )
-    return out
-
-
 def _trim(style: str, color: str, shape_d: str, piece: str) -> str:
     inner = ""
     if style == "stitch":
@@ -281,13 +218,6 @@ def armour(piece: str, material: str) -> str:
 
 
 # --- stroked parts ------------------------------------------------------------------------------
-
-
-def line_part(d: str, color: str, w: float) -> str:
-    return (
-        f'<path d="{d}" fill="none" stroke="{INK}" stroke-width="{w + OUT * 1.4}" stroke-linecap="round" stroke-linejoin="round"/>'
-        f'<path d="{d}" fill="none" stroke="{color}" stroke-width="{w}" stroke-linecap="round" stroke-linejoin="round"/>'
-    )
 
 
 def bow() -> str:
