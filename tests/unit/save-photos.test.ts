@@ -40,6 +40,8 @@ describe('save serialization', () => {
       /newer version/,
     );
     expect(validateBundle({ format: 'sozo-world', version: 1, meta: {}, chunks: {} }).photos).toEqual([]);
+    expect(validateBundle({ format: 'sozo-world', version: 2, meta: {}, chunks: {} }).version).toBe(2);
+    expect(() => validateBundle({ format: 'sozo-world', version: 3, meta: {}, chunks: {} })).toThrow(/newer/);
   });
 
   it('still imports worlds exported before the rename', () => {

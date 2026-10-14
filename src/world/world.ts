@@ -25,7 +25,7 @@ export class World {
 
   private readonly chunks = new Map<string, ChunkEntry>();
   /** Full block arrays of chunks the player has changed (loaded from or written to the save). */
-  private readonly modified = new Map<string, Uint8Array>();
+  private readonly modified = new Map<string, Uint16Array>();
   private readonly dirtyModified = new Set<string>();
   private readonly listeners: BlockChangeListener[] = [];
 
@@ -44,13 +44,13 @@ export class World {
   }
 
   /** Seed the world with chunks changed in a previous session. */
-  loadModifiedChunks(chunks: Map<string, Uint8Array>): void {
+  loadModifiedChunks(chunks: Map<string, Uint16Array>): void {
     for (const [k, v] of chunks) this.modified.set(k, v);
   }
 
   /** Chunks changed since the last call, for incremental saving. */
-  takeDirtyModified(): Map<string, Uint8Array> {
-    const out = new Map<string, Uint8Array>();
+  takeDirtyModified(): Map<string, Uint16Array> {
+    const out = new Map<string, Uint16Array>();
     for (const k of this.dirtyModified) {
       const entry = this.chunks.get(k);
       const data = entry ? entry.data.blocks : this.modified.get(k);
@@ -60,7 +60,7 @@ export class World {
     return out;
   }
 
-  allModified(): Map<string, Uint8Array> {
+  allModified(): Map<string, Uint16Array> {
     const out = new Map(this.modified);
     for (const k of this.modified.keys()) {
       const e = this.chunks.get(k);
@@ -109,11 +109,22 @@ export class World {
     return e.data.get(x - cx * CHUNK_SIZE, y, z - cz * CHUNK_SIZE);
   }
 
+  /** The state bits of a block (facing, half, open...); 0 for most blocks. */
+  getBlockState(x: number, y: number, z: number): number {
+    if (y < 0 || y >= CHUNK_HEIGHT) return 0;
+    const cx = Math.floor(x / CHUNK_SIZE);
+    const cz = Math.floor(z / CHUNK_SIZE);
+    const e = this.chunks.get(chunkKey(cx, cz));
+    if (!e) return 0;
+    return e.data.getState(x - cx * CHUNK_SIZE, y, z - cz * CHUNK_SIZE);
+  }
+
   isLoaded(x: number, z: number): boolean {
     return this.chunks.has(chunkKey(Math.floor(x / CHUNK_SIZE), Math.floor(z / CHUNK_SIZE)));
   }
 
-  setBlock(x: number, y: number, z: number, id: number): boolean {
+  /** Sets a block (and its state, which defaults to 0). Returns false if nothing changed. */
+  setBlock(x: number, y: number, z: number, id: number, state = 0): boolean {
     if (y < 0 || y >= CHUNK_HEIGHT) return false;
     const cx = Math.floor(x / CHUNK_SIZE);
     const cz = Math.floor(z / CHUNK_SIZE);
@@ -121,8 +132,8 @@ export class World {
     const lx = x - cx * CHUNK_SIZE;
     const lz = z - cz * CHUNK_SIZE;
     const old = e.data.get(lx, y, lz);
-    if (old === id) return false;
-    e.data.set(lx, y, lz, id);
+    if (old === id && e.data.getState(lx, y, lz) === state) return false;
+    e.data.set(lx, y, lz, id, state);
     e.meshDirty = true;
     e.colliderDirty = true;
     const k = chunkKey(cx, cz);

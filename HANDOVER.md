@@ -62,7 +62,7 @@ npm run build        # static site in dist/
 - **Stack:** Vite 8, TypeScript 5.9 (strict), Three.js 0.186, Rapier 0.21 (`@dimforge/rapier3d-compat`), simplex-noise, idb, Vitest 5, Playwright 1.56.
 - **`src/game.ts`:** the main loop that wires everything together. `render()` runs `InkPass.render` on the world, then `InkPass.renderOverlay` on the viewmodel.
 - **`src/world/`:**
-  - Blocks: `blocks.ts`. Water flow ids `WATER_FLOW[1..7]` are appended after PHOTO so existing ids stay stable. Uses `isWater` and the `gravity` flag.
+  - Blocks: `blocks.ts` (up to 4,096 ids; chunk cells also carry 4 state bits, see §9). Water flow ids `WATER_FLOW[1..7]` are appended after PHOTO so existing ids stay stable. Uses `isWater` and the `gravity` flag.
   - Chunks are 16×16×128; terrain, streaming and voxel raycast also live here.
   - `chunkMesher.ts`: face culling plus ambient occlusion (AO).
   - `blockUpdates.ts`: a pull-model scheduler for water (0.25 s tick) and falling blocks (0.05 s tick), with the walled-pocket source rule.
@@ -146,7 +146,7 @@ npm run build        # static site in dist/
 The agreed plan imports **all** library entries as playable content, in phases. The user reviews each phase in the world before the next one starts.
 
 0. **Export pipeline.** ✅ Done. `npm run sprites:export` (`tools/sprite-library/export_game.py`) writes `src/generated/` (data, SVG art, stable block ids) and `public/library/` (flat block-face atlas, 3D sprites). Review page: `/library.html` in the dev server.
-1. 16-bit block storage (12-bit id + 4-bit state) and a save migration.
+1. **16-bit block storage.** ✅ Done. Chunk cells are `Uint16Array`: a 12-bit block id plus 4 state bits (`packBlock`, `blockId` and `blockState` in `chunk.ts`). `ChunkData.get` and `World.getBlock` still return just the id; use `getState`/`getBlockState` and the `state` argument of `set`/`setBlock` for state. Save format v2 writes 16-bit RLE, and each IndexedDB chunk row is tagged `v: 2`. Untagged rows and version 1 exports are decoded with `rleDecodeV1`. The fixture `tests/fixtures/world-v1.json` (an old-format world with a brick pillar at the origin) is checked by unit and e2e tests. Debug: `__game.debugBlockInfo()`, `__game.debugSetState(n)`.
 2. Library blocks in the world (shapes, placement state), plus an "Art: World / Library" settings toggle for the style decision.
 3. Items: tools, armour, food (Energy bar), materials, recipes.
 4. Effects, potions and particles.

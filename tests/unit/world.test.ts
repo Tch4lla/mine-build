@@ -1,6 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { AIR, GLASS, STONE, WATER } from '../../src/world/blocks';
-import { CHUNK_VOLUME, ChunkData, rleDecode, rleEncode } from '../../src/world/chunk';
+import {
+  CHUNK_VOLUME,
+  ChunkData,
+  MAX_BLOCK_ID,
+  MAX_STATE,
+  blockId,
+  blockState,
+  packBlock,
+  rleDecode,
+  rleDecodeV1,
+  rleEncode,
+} from '../../src/world/chunk';
 import { exposedSolidVoxels, meshChunk } from '../../src/world/chunkMesher';
 import { raycastVoxels } from '../../src/world/raycast';
 import { TerrainGenerator } from '../../src/world/terrain';
@@ -64,13 +75,43 @@ describe('RLE', () => {
   it('round-trips chunk data', () => {
     const data = new TerrainGenerator(42).generate(1, -2).blocks;
     const enc = rleEncode(data);
-    expect(enc.length).toBeLessThan(data.length / 4);
+    expect(enc.length).toBeLessThan(data.byteLength / 4);
     expect(rleDecode(enc)).toEqual(data);
   });
-  it('handles runs longer than 255', () => {
-    const data = new Uint8Array(CHUNK_VOLUME);
+  it('handles runs longer than 65535', () => {
+    const data = new Uint16Array(200_000);
     data[1000] = 3;
+    expect(rleDecode(rleEncode(data), data.length)).toEqual(data);
+  });
+  it('keeps ids above 255 and state bits', () => {
+    const data = new Uint16Array(CHUNK_VOLUME);
+    data[5] = packBlock(811, 9);
+    data[6] = packBlock(MAX_BLOCK_ID, MAX_STATE);
     expect(rleDecode(rleEncode(data))).toEqual(data);
+  });
+  it('decodes version 1 (8-bit) data', () => {
+    const v1 = Uint8Array.from([255, 17, 255, 17, 1, 13, 255, 0]);
+    const out = rleDecodeV1(v1, 766);
+    expect(out[0]).toBe(17);
+    expect(out[510]).toBe(13);
+    expect(out[511]).toBe(0);
+  });
+});
+
+describe('block state', () => {
+  it('packs an id and a state into one cell', () => {
+    const v = packBlock(700, 5);
+    expect(blockId(v)).toBe(700);
+    expect(blockState(v)).toBe(5);
+    expect(blockState(packBlock(STONE))).toBe(0);
+  });
+  it('reads the id and the state separately', () => {
+    const c = new ChunkData(0, 0);
+    c.set(1, 2, 3, STONE, 6);
+    expect(c.get(1, 2, 3)).toBe(STONE);
+    expect(c.getState(1, 2, 3)).toBe(6);
+    c.set(1, 2, 3, STONE);
+    expect(c.getState(1, 2, 3)).toBe(0);
   });
 });
 

@@ -1,6 +1,8 @@
 /**
- * Block registry. Block IDs are stored as bytes in chunk arrays, so there can be at most 256.
+ * Block registry. Block ids are stored in the low 12 bits of each chunk cell (see chunk.ts), so
+ * there can be up to 4,096 block types.
  */
+import { MAX_BLOCK_ID } from './chunk';
 
 export type ToolClass = 'pickaxe' | 'axe' | 'shovel' | 'none';
 
@@ -283,12 +285,12 @@ export function blockByKey(key: string): BlockDef | undefined {
 }
 
 /** Lookup tables indexed by block id, for hot loops. */
-export const IS_SOLID = new Uint8Array(256);
-export const IS_OPAQUE = new Uint8Array(256);
-export const RENDER = new Uint8Array(256); // 0 none, 1 opaque, 2 cutout, 3 translucent, 4 custom
-export const FALLS = new Uint8Array(256);
+export const IS_SOLID = new Uint8Array(MAX_BLOCK_ID + 1);
+export const IS_OPAQUE = new Uint8Array(MAX_BLOCK_ID + 1);
+export const RENDER = new Uint8Array(MAX_BLOCK_ID + 1); // 0 none, 1 opaque, 2 cutout, 3 translucent, 4 custom
+export const FALLS = new Uint8Array(MAX_BLOCK_ID + 1);
 /** Water strength by id: 8 for a source block, 1-7 for flowing water, 0 for anything else. */
-export const WATER_STRENGTH = new Uint8Array(256);
+export const WATER_STRENGTH = new Uint8Array(MAX_BLOCK_ID + 1);
 WATER_STRENGTH[WATER] = 8;
 for (let s = 1; s <= 7; s++) WATER_STRENGTH[WATER_FLOW[s]] = s;
 for (const b of BLOCKS) {

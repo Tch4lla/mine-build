@@ -3,7 +3,8 @@ import type { SerializedContraption } from '../build/contraptions';
 import type { ItemStack } from '../items/inventory';
 import type { FrameData, PhotoBlockData } from '../photos/photoEntities';
 
-export const SAVE_VERSION = 1;
+/** 2: chunks are 16-bit RLE (block id + state); 1: 8-bit block ids. */
+export const SAVE_VERSION = 2;
 
 export const EXPORT_FORMAT = 'sozo-world';
 /** Exports made before the rename to Sōzō. */
@@ -31,7 +32,7 @@ export interface ExportBundle {
   format: string;
   version: number;
   meta: WorldMeta;
-  /** chunkKey -> base64(RLE block data) */
+  /** chunkKey -> base64(RLE block data): 8-bit before version 2, 16-bit from version 2. */
   chunks: Record<string, string>;
   /** Photos referenced by the world. */
   photos: { id: string; name: string; w: number; h: number; dataUrl: string }[];

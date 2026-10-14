@@ -3,7 +3,7 @@
  * Produces separate buffers for solid/cutout geometry and translucent geometry (water).
  */
 import { BLOCKS, RENDER, WATER_STRENGTH } from './blocks';
-import { CHUNK_HEIGHT, CHUNK_SIZE, ChunkData } from './chunk';
+import { CHUNK_HEIGHT, CHUNK_SIZE, ChunkData, MAX_BLOCK_ID } from './chunk';
 import { tileIndex, tileUV } from './tiles';
 
 export interface MeshData {
@@ -108,7 +108,7 @@ const BLOCK_UVS = BLOCKS.map((b) => ({
 }));
 
 const FULL_BRIGHT = new Set(['lamp', 'crystal_ore']);
-const BRIGHT = new Uint8Array(256);
+const BRIGHT = new Uint8Array(MAX_BLOCK_ID + 1);
 for (const b of BLOCKS) BRIGHT[b.id] = FULL_BRIGHT.has(b.key) ? 1 : 0;
 
 class Builder {
@@ -160,7 +160,7 @@ export function meshChunk(chunk: ChunkData, sample: BlockSampler): { solid: Mesh
   // Padded copy (S+2)^2 x H for fast neighbour lookups.
   const P = S + 2;
   const H = CHUNK_HEIGHT;
-  const pad = new Uint8Array(P * P * H);
+  const pad = new Uint16Array(P * P * H);
   const pi = (x: number, y: number, z: number) => x + 1 + (z + 1) * P + y * P * P;
   for (let y = 0; y < H; y++) {
     for (let z = -1; z <= S; z++) {

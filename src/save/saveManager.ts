@@ -1,6 +1,6 @@
 /** IndexedDB persistence: world metadata + only the chunks the player changed (RLE compressed). */
 import { openDB, type IDBPDatabase } from 'idb';
-import { rleDecode, rleEncode } from '../world/chunk';
+import { rleDecode, rleDecodeV1, rleEncode } from '../world/chunk';
 import { uid } from '../engine/rng';
 import { addPhoto, getPhoto } from '../photos/photoStore';
 import {
@@ -39,6 +39,13 @@ interface ChunkRow {
   world: string;
   key: string;
   rle: Uint8Array;
+  /** Chunk encoding: absent in saves before version 2 (8-bit RLE), 2 for 16-bit RLE. */
+  v?: number;
+}
+
+/** Decodes chunk RLE written by any save version. */
+function decodeChunk(rle: Uint8Array, version: number | undefined): Uint16Array {
+  return (version ?? 1) >= 2 ? rleDecode(rle) : rleDecodeV1(rle);
 }
 
 export async function listWorlds(): Promise<WorldMeta[]> {
@@ -63,17 +70,17 @@ export async function createWorld(name: string, seed: number, creative: boolean)
 
 export async function loadWorld(
   id: string,
-): Promise<{ meta: WorldMeta; chunks: Map<string, Uint8Array> } | null> {
+): Promise<{ meta: WorldMeta; chunks: Map<string, Uint16Array> } | null> {
   const d = await db();
   const meta = (await d.get('worlds', id)) as WorldMeta | undefined;
   if (!meta) return null;
   const rows = (await d.getAllFromIndex('chunks', 'world', id)) as ChunkRow[];
-  const chunks = new Map<string, Uint8Array>();
-  for (const r of rows) chunks.set(r.key, rleDecode(r.rle));
+  const chunks = new Map<string, Uint16Array>();
+  for (const r of rows) chunks.set(r.key, decodeChunk(r.rle, r.v));
   return { meta, chunks };
 }
 
-export async function saveWorld(meta: WorldMeta, changedChunks: Map<string, Uint8Array>): Promise<void> {
+export async function saveWorld(meta: WorldMeta, changedChunks: Map<string, Uint16Array>): Promise<void> {
   const d = await db();
   const tx = d.transaction(['worlds', 'chunks'], 'readwrite');
   meta.lastPlayed = Date.now();
@@ -81,7 +88,7 @@ export async function saveWorld(meta: WorldMeta, changedChunks: Map<string, Uint
   await tx.objectStore('worlds').put(meta);
   const store = tx.objectStore('chunks');
   for (const [key, blocks] of changedChunks) {
-    const row: ChunkRow = { k: `${meta.id}|${key}`, world: meta.id, key, rle: rleEncode(blocks) };
+    const row: ChunkRow = { k: `${meta.id}|${key}`, world: meta.id, key, rle: rleEncode(blocks), v: 2 };
     await store.put(row);
   }
   await tx.done;
@@ -142,8 +149,9 @@ export async function importWorld(json: string): Promise<WorldMeta> {
     name: `${bundle.meta.name} (imported)`,
     lastPlayed: Date.now(),
   };
-  const chunks = new Map<string, Uint8Array>();
-  for (const [k, b64] of Object.entries(bundle.chunks)) chunks.set(k, rleDecode(base64ToBytes(b64)));
+  const chunks = new Map<string, Uint16Array>();
+  for (const [k, b64] of Object.entries(bundle.chunks))
+    chunks.set(k, decodeChunk(base64ToBytes(b64), bundle.version));
   await saveWorld(meta, chunks);
   return meta;
 }

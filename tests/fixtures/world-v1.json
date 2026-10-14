@@ -1,0 +1,26 @@
+{
+  "format": "sozo-world",
+  "version": 1,
+  "meta": {
+    "id": "fixture-v1",
+    "name": "Old Format World",
+    "seed": 424242,
+    "createdAt": 1760400000000,
+    "lastPlayed": 1760400000000,
+    "creative": true,
+    "version": 1,
+    "timeOfDay": 0.3,
+    "player": {
+      "pos": [2.5, 41, 2.5],
+      "yaw": -2.36,
+      "pitch": -0.3,
+      "health": 20,
+      "flying": false,
+      "spawn": [2.5, 41, 2.5]
+    }
+  },
+  "chunks": {
+    "0,0": "/xEBEf8D/wP/A/8D/wP/A/8D/wP/A/8D/wP/A/8D/wP/A/8D/wP/A/8D/wP/A/8D/wP/A/8D/wP/A/8D/wP/A/8D/wP/A/8D/wP/A/8D/wP/AycDVQEHCAkBBwgJAQcICQEDCAEBAwgJAQcICQEHCAkBBwhEAVUABwkJAAEJBQABCQkAAQkFAAEJCQABCQIAAQ0CAAEJCQABCQUAAQkJAAEJBQABCQkABwnMAAEN/wABDf8AAQ3/AAEN/wABE/8A/wD/AP8A/wD/AP8A/wD/AP8A/wD/AP8A/wD/AP8A/wD/AP8A/wD/AP8A/wD/AP8A/wD/AP8A/wD/AP8A/wD/AP8A/wD/AP8A/wD/AP8A/wD/AP8A/wD/AP8A/wD/AP8A/wD/AP8A/wD/AP8A/wD/AP8A/wD/AP8A/wD/AP8A/wD/AP8A/wD/AP8A/wD/AP8A/wD/AP8A/wD/AP8A/wD/AMgA"
+  },
+  "photos": []
+}

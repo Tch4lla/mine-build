@@ -110,7 +110,7 @@ export class Game implements ScreenHost {
   constructor(
     private readonly dom: GameDom,
     readonly meta: WorldMeta,
-    chunks: Map<string, Uint8Array>,
+    chunks: Map<string, Uint16Array>,
     private settings: Settings,
     atlasTexture: THREE.Texture,
   ) {
@@ -1479,6 +1479,23 @@ export class Game implements ScreenHost {
     const t = this.target;
     if (!t) return null;
     return t.kind === 'block' ? { kind: t.kind, x: t.hit.x, y: t.hit.y, z: t.hit.z } : { kind: t.kind };
+  }
+
+  /** The block under the crosshair: its key, numeric id and state bits. */
+  debugBlockInfo(): { key: string; id: number; state: number; x: number; y: number; z: number } | null {
+    this.updateTarget();
+    const t = this.target;
+    if (t?.kind !== 'block') return null;
+    const { x, y, z } = t.hit;
+    const id = this.world.getBlock(x, y, z);
+    return { key: BLOCKS[id]?.key ?? '?', id, state: this.world.getBlockState(x, y, z), x, y, z };
+  }
+
+  /** Sets the state bits (0–15) of the block under the crosshair, keeping the block. */
+  debugSetState(state: number): boolean {
+    const info = this.debugBlockInfo();
+    if (!info) return false;
+    return this.world.setBlock(info.x, info.y, info.z, info.id, state);
   }
 
   debugSpawnPart(id: string, offset = new THREE.Vector3(0, 1, -3)): Contraption {
