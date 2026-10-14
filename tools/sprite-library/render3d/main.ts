@@ -2,7 +2,7 @@
  * Renders a 3D model as a Sōzō sprite with the game's own look: MeshToonMaterial bands (toonGradient)
  * and the InkPass outline, from a three-quarter camera, on a transparent background.
  *
- * Open /tools/sprite-library/render3d/?model=rabbit&size=512 in the dev server.
+ * Open /tools/sprite-library/render3d/?model=rabbit&size=512 in the dev server (&turn=degrees spins it).
  */
 import * as THREE from 'three';
 import { InkPass } from '../../../src/view/inkPass';
@@ -46,17 +46,25 @@ camera.lookAt(centre);
 camera.updateMatrixWorld();
 camera.updateProjectionMatrix();
 
-// Frame tightly: project the model's vertices, then zoom and shift so it fills ~86% of the sprite.
+// Frame tightly: project the model's vertices at every turntable angle (so the framing stays fixed
+// while the model spins), then zoom and shift so it fills ~86% of the sprite.
 const pts: THREE.Vector3[] = [];
-model.updateMatrixWorld(true);
-model.traverse((o) => {
-  const m = o as THREE.Mesh;
-  if (!m.isMesh) return;
-  const pos = m.geometry.getAttribute('position');
-  for (let i = 0; i < pos.count; i += 3)
-    pts.push(new THREE.Vector3().fromBufferAttribute(pos, i).applyMatrix4(m.matrixWorld));
-});
-pts.push(new THREE.Vector3(0, 0, 0.6), new THREE.Vector3(0, 0, -0.7)); // keep room for the shadow
+for (let deg = 0; deg < 360; deg += 30) {
+  model.rotation.y = THREE.MathUtils.degToRad(deg);
+  model.updateMatrixWorld(true);
+  model.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (!m.isMesh) return;
+    const pos = m.geometry.getAttribute('position');
+    for (let i = 0; i < pos.count; i += 3)
+      pts.push(new THREE.Vector3().fromBufferAttribute(pos, i).applyMatrix4(m.matrixWorld));
+  });
+}
+model.rotation.y = THREE.MathUtils.degToRad(Number(params.get('turn') ?? 0));
+for (let deg = 0; deg < 360; deg += 45) {
+  const r = THREE.MathUtils.degToRad(deg);
+  pts.push(new THREE.Vector3(Math.sin(r) * 0.65, 0, Math.cos(r) * 0.65)); // room for the shadow
+}
 let minX = Infinity,
   maxX = -Infinity,
   minY = Infinity,
@@ -84,7 +92,10 @@ const sh = new THREE.Mesh(
 sh.rotation.x = -Math.PI / 2;
 sh.scale.set(0.9, 1.3, 1);
 sh.position.set(0, 0.001, -0.05);
-shadowScene.add(sh);
+const shadowPivot = new THREE.Group();
+shadowPivot.add(sh);
+shadowPivot.rotation.y = model.rotation.y; // the shadow turns with the model
+shadowScene.add(shadowPivot);
 
 const ink = new InkPass(size, size);
 // Thicker lines than the world pass so they survive being shrunk to icon size.
