@@ -129,11 +129,12 @@ npm run build        # static site in dist/
   - Minecraft-only concepts, paintings, placement states and duplicates are left out.
   - Distinctive names are renamed, e.g. Deepslate → Shale, Crafting Table → Crafting Bench, copper stages → Tarnished/Patinated/Verdigris.
   - No reference images are used. Every sprite is drawn as SVG by `tools/sprite-library/`.
-- **Output:** `documents/sozo-sprite-library.xlsx`, with sheets Summary, Blocks, Materials and Not Included.
+- **Output:** `documents/sozo-sprite-library.xlsx`, with sheets Summary, Blocks, Materials, Tools & Gear and Not Included.
+- **Quality bar** (the user asked for this to be kept): match the batch-1 materials recipe in `itemkit.py`, i.e. a bold ink silhouette, three toon tones, thin inner edges and glints.
 - **Rebuild:** follow `tools/sprite-library/README.md`. The reference .xlsx is not in the repo; ask the user for it again, or re-export it with `export_reference.py`.
 - **Batch status:**
   1. Blocks and materials. ✅ Done: 801 blocks and 50 materials.
-  2. Tools, weapons and armour. Next.
-  3. Food.
+  2. Tools, weapons and armour. ✅ Done: 112 sprites with Sōzō damage, durability, mining speed and defence values.
+  3. Food (including eggs). Next.
   4. Creatures.
   5. Effects, particles and structures.

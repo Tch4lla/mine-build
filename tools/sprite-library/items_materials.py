@@ -12,43 +12,7 @@ import math
 from geometry import INK, shade
 from materials import DYES
 
-LIGHT, MID, DARK, HI = 1.0, 0.86, 0.7, 1.22
-OUT = 5.2  # silhouette stroke
-EDGE = 1.6  # inner edge stroke
-
-
-def P(points) -> str:
-    return " ".join(f"{x:.1f},{y:.1f}" for x, y in points)
-
-
-def poly(points, fill, edge=True) -> str:
-    e = f' stroke="{INK}" stroke-width="{EDGE}" stroke-linejoin="round" stroke-opacity="0.75"' if edge else ""
-    return f'<polygon points="{P(points)}" fill="{fill}"{e}/>'
-
-
-def path(d, fill, edge=True) -> str:
-    e = f' stroke="{INK}" stroke-width="{EDGE}" stroke-linejoin="round" stroke-opacity="0.75"' if edge else ""
-    return f'<path d="{d}" fill="{fill}"{e}/>'
-
-
-def silhouette(shape: str) -> str:
-    """A shape (any SVG element string) drawn as a thick ink outline underneath everything."""
-    return f'<g fill="{INK}" stroke="{INK}" stroke-width="{OUT * 2}" stroke-linejoin="round" stroke-linecap="round">{shape}</g>'
-
-
-def glint(x, y, s=5) -> str:
-    return (
-        f'<path d="M{x} {y-s} Q{x} {y} {x+s} {y} Q{x} {y} {x} {y+s} Q{x} {y} {x-s} {y} Q{x} {y} {x} {y-s}Z" fill="#ffffff"/>'
-    )
-
-
-def faceted(outline_pts, facets, color) -> str:
-    """outline_pts: silhouette polygon. facets: list of (points, tone)."""
-    out = silhouette(f'<polygon points="{P(outline_pts)}"/>')
-    out += f'<polygon points="{P(outline_pts)}" fill="{shade(color, MID)}"/>'
-    for pts, k in facets:
-        out += poly(pts, shade(color, k))
-    return out
+from itemkit import DARK, EDGE, HI, LIGHT, MID, OUT, P, faceted, glint, path, poly, silhouette  # noqa: F401
 
 
 # --- metals -------------------------------------------------------------------------------------

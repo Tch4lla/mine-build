@@ -24,7 +24,7 @@ python build.py reference.json ../../documents/sozo-sprite-library.xlsx --sheet-
 ## Batches
 
 1. **Blocks and materials.** Done: 801 blocks and 50 materials.
-2. Tools, weapons and armour.
+2. **Tools, weapons and armour.** Done: 112 sprites (6 tiers × 6 tools, 6 armour sets, plus ranged, utility, buckets, riding, pouches and throwables).
 3. Food.
 4. Creatures.
 5. Effects, particles and structures.
