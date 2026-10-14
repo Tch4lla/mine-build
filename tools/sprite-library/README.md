@@ -40,4 +40,4 @@ Open `/tools/sprite-library/render3d/?model=<id>&turn=<deg>` in the dev server t
 2. **Tools, weapons and armour.** Done: 112 sprites (6 tiers × 6 tools, 6 armour sets, plus ranged, utility, buckets, riding, pouches and throwables).
 3. **Food.** Done: 47 sprites with Energy Restored, Meal Size, Cooks Into and Effect.
 4. **Creatures.** Done: 63 sprites (animals, generic monsters, the player, boats, carts and display objects).
-5. Effects, particles and structures.
+5. **Effects, potions, particles and structures.** Done: 27 effects, 47 potions, 39 particles (2D) and 18 structures (3D dioramas).

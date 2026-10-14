@@ -29,6 +29,8 @@ import items_materials as mat_items
 import items_gear as gear_items
 import items_food as food_items
 import creatures as creature_items
+import items_fx as fx
+import structures_data as sd
 from geometry import svg_doc
 
 FONT = "Arial"
@@ -318,6 +320,104 @@ def main() -> None:
             why = "Minecraft-only variant"
         entity_excluded.append((eid, why))
 
+    # Effects, potions, particles and structures (batch 5).
+    erows = []
+    eff_ids = {r["Effect ID"] for r in ref["Effects"]["rows"]}
+    for eid, (ename, col, etype, desc, symbol) in fx.EFFECTS.items():
+        if eid not in eff_ids:
+            continue
+        erows.append(((lambda col=col, symbol=symbol: fx.badge(col, symbol)), [ename, cb.sozo_id(ename), etype, desc, fx.EFFECT_SOURCES.get(eid, "—"), col.upper(), eid]))
+    ei = write_item_sheet(
+        "Effects",
+        ["Sprite", "Name", "Sōzō ID", "Type", "What it does", "Sources", "Colour", "Replaces (reference ID)"],
+        [11, 20, 20, 11, 44, 40, 10, 22],
+        erows,
+        (2, 3, 5, 6, 8),
+    )
+
+    prows = []
+    potion_src = set()
+
+    def pid(form, brew):
+        return f'{form}[potion_contents={{potion:"minecraft:{brew}"}}]'
+
+    if pid("potion", "water") in items_by_id:
+        prows.append((lambda: fx.potion("#a9cfe0", "drink", 0.5), ["Water Bottle", "water_bottle", "Base", "Drink", "—", "Rain or any water source", stack_of(items_by_id[pid("potion", "water")]), pid("potion", "water")]))
+        potion_src.add(pid("potion", "water"))
+    if pid("potion", "awkward") in items_by_id:
+        prows.append((lambda: fx.potion("#9aa8c0", "drink"), ["Plain Potion", "plain_potion", "Base", "Drink", "—", "Water Bottle + Puff Gel", stack_of(items_by_id[pid("potion", "awkward")]), pid("potion", "awkward")]))
+        potion_src.add(pid("potion", "awkward"))
+    forms = (("potion", "Drink", "Potion of {}"), ("splash_potion", "Splash", "Splash Potion of {}"), ("lingering_potion", "Mist", "Mist Potion of {}"))
+    for brew, (bname, eff, col, ingredient, dur) in fx.POTIONS.items():
+        for form_id, form_name, pattern in forms:
+            ref_id = pid(form_id, brew)
+            if ref_id not in items_by_id:
+                continue
+            name = pattern.format(bname)
+            fdur = dur if form_name != "Mist" or dur == "Instant" else "Cloud, 0:30"
+            prows.append(((lambda c=col, f=form_name.lower() if form_name != "Drink" else "drink": fx.potion(c, f)), [name, cb.sozo_id(name), fx.EFFECTS[eff][0], form_name, fdur, ingredient + (" (then Blast Powder)" if form_name == "Splash" else " (then Blast Powder and Puff Gel)" if form_name == "Mist" else ""), stack_of(items_by_id[ref_id]), ref_id]))
+            potion_src.add(ref_id)
+    pi = write_item_sheet(
+        "Potions",
+        ["Sprite", "Name", "Sōzō ID", "Effect", "Form", "Duration", "Brewing Ingredient", "Stack", "Replaces (reference ID)"],
+        [11, 30, 30, 16, 9, 12, 40, 8, 44],
+        prows,
+        (2, 3, 4, 7, 9),
+    )
+
+    part_ids = [r["Particle ID"] for r in ref["Particles"]["rows"]]
+    xrows = [((lambda fn=fn: fn()), [pname, cb.sozo_id(pname), cat, when, pidn]) for pidn, (pname, cat, when, fn) in fx.PARTICLES.items() if pidn in part_ids]
+    xi = write_item_sheet(
+        "Particles",
+        ["Sprite", "Name", "Sōzō ID", "Category", "When it appears", "Replaces (reference ID)"],
+        [11, 20, 20, 12, 44, 26],
+        xrows,
+        (2, 3, 4, 5, 6),
+    )
+
+    struct_ids = [r["Structure ID"] for r in ref["Structures"]["rows"]]
+    srows = []
+    for sid_, sname, biome, ssize, contains in sd.STRUCTURES:
+        if sid_ not in struct_ids:
+            continue
+        p3 = sprites3d / f"{sid_}.png"
+        srows.append(((lambda p3=p3: p3.read_bytes()), [sname, cb.sozo_id(sname), biome, ssize, contains, sid_]))
+    si = write_item_sheet(
+        "Structures",
+        ["Sprite", "Name", "Sōzō ID", "Biome", "Size", "Contains", "Replaces (reference ID)"],
+        [11, 22, 22, 18, 9, 50, 26],
+        srows,
+        (2, 3, 4, 6, 7),
+    )
+
+    fx_excluded = []
+    for eid in [r["Effect ID"] for r in ref["Effects"]["rows"]]:
+        if eid not in fx.EFFECTS:
+            fx_excluded.append((eid, "Effect", "Minecraft-only effect"))
+    for pidn in part_ids:
+        if pidn in fx.PARTICLES:
+            continue
+        if pidn in fx.PARTICLE_FOLD:
+            fx_excluded.append((pidn, "Particle", f"Folded into {fx.PARTICLES[fx.PARTICLE_FOLD[pidn]][0]}"))
+        else:
+            fx_excluded.append((pidn, "Particle", "Technical or Minecraft-only particle"))
+    sd_src = {x[0] for x in sd.STRUCTURES}
+    for sid_ in struct_ids:
+        if sid_ in sd_src:
+            continue
+        fx_excluded.append((sid_, "Structure", "Folded into Camp" if sid_.endswith(sd.STRUCTURE_FOLD) else "Minecraft-only structure"))
+    for i in items_by_id:
+        if not i:
+            continue
+        if ("potion" in i and i not in potion_src) or i.startswith("tipped_arrow["):
+            if "wind_charged" in i:
+                continue  # already listed
+            base = "Dipped Arrow" if i.startswith("tipped_arrow") else "its base potion (long/strong brews are the same item)"
+            if any(x in i for x in ("turtle_master", "infested", "oozing", "weaving")):
+                fx_excluded.append((i, "Item", "Minecraft-only potion"))
+            else:
+                fx_excluded.append((i, "Item", f"Variant folded into {base}"))
+
     gear_src = {g["src"] for g in gear}
     item_excluded = [
         (i, "Minecraft-only concept" if "spawn_egg" not in i else "Spawn eggs are a Minecraft mechanic")
@@ -335,6 +435,7 @@ def main() -> None:
         [(src, "Block", why) for src, why in excluded]
         + [(src, "Item", why) for src, why in item_excluded]
         + [(src, "Entity", why) for src, why in entity_excluded]
+        + fx_excluded
     )
     for i, row in enumerate(all_excluded, start=2):
         for j, v in enumerate(row, start=1):
@@ -345,7 +446,7 @@ def main() -> None:
     wsum = wb.create_sheet("Summary", 0)
     wsum.column_dimensions["A"].width = 40
     wsum.column_dimensions["B"].width = 16
-    wsum["A1"] = "Sōzō Sprite Library — Batches 1–4"
+    wsum["A1"] = "Sōzō Sprite Library — Batches 1–5 (complete)"
     wsum["A1"].font = Font(name=FONT, bold=True, size=16, color=INK)
     wsum["A2"] = "Original Sōzō art in the Ink & Wash style. Generated by tools/sprite-library/build.py."
     wsum["A2"].font = Font(name=FONT, italic=True, color="5A4D42")
@@ -355,7 +456,11 @@ def main() -> None:
         ("Tools & Gear", f"=COUNTA('Tools & Gear'!B2:B{gi})"),
         ("Food", f"=COUNTA(Food!B2:B{fi})"),
         ("Creatures & Vehicles", f"=COUNTA(Creatures!B2:B{ci})"),
-        ("Total sprites", "=SUM(B4:B8)"),
+        ("Effects", f"=COUNTA(Effects!B2:B{ei})"),
+        ("Potions", f"=COUNTA(Potions!B2:B{pi})"),
+        ("Particles", f"=COUNTA(Particles!B2:B{xi})"),
+        ("Structures", f"=COUNTA(Structures!B2:B{si})"),
+        ("Total sprites", "=SUM(B4:B12)"),
         ("Reference entries not included", f"=COUNTA('Not Included'!A2:A{xl})"),
     ]
     row_i = 4
@@ -379,6 +484,9 @@ def main() -> None:
     breakdown("Tools & Gear by category", "Tools & Gear", "D", gi, sorted(Counter(g["category"] for g in gear)))
     breakdown("Food by category", "Food", "D", fi, sorted(Counter(f["category"] for f in food)))
     breakdown("Creatures by category", "Creatures", "D", ci, sorted(Counter(c["category"] for c in crit)))
+    breakdown("Effects by type", "Effects", "D", ei, sorted({r[1][2] for r in erows}))
+    breakdown("Potions by form", "Potions", "E", pi, sorted({r[1][3] for r in prows}))
+    breakdown("Particles by category", "Particles", "D", xi, sorted({r[1][2] for r in xrows}))
     notes = [
         "How to read this",
         "Hardness: Sōzō tiers (Instant, Soft, Firm, Hard, Very hard, Unbreakable).",
@@ -390,6 +498,8 @@ def main() -> None:
         "Energy Restored: how much of the Energy bar a food refills (0–10). Meal Size: Snack, Light, Meal or Feast.",
         "Cooks Into: what a raw food becomes in a furnace or campfire. Effect: any status effect from eating it.",
         "Behaviour: Passive, Neutral (fights back), Defensive or Hostile. Health: in Sōzō hearts. Drops: Sōzō items from this library.",
+        "Potions: Drink, Splash (thrown) or Mist (leaves a lingering cloud). Long and strong brews are the same item brewed further.",
+        "Structures and creatures are real 3D models (render3d/) with the game's toon shading and ink outline.",
         "Replaces (reference ID): the entry in the reference list this covers, for checking coverage only.",
         "Names: generic names are kept; distinctive ones are renamed (e.g. Deepslate → Shale, Flint and Steel → Fire Striker, Bundle → Pouch).",
     ]
@@ -403,7 +513,7 @@ def main() -> None:
                 c.font = Font(name=FONT, color=INK)
 
     wb.save(args.out)
-    print(f"blocks: {len(entries)}  materials: {mi-1}  gear: {gi-1}  food: {fi-1}  creatures: {ci-1}  excluded: {len(all_excluded)}  categories: {dict(Counter(e.category for e, _ in entries))}")
+    print(f"blocks: {len(entries)}  materials: {mi-1}  gear: {gi-1}  food: {fi-1}  creatures: {ci-1}  effects: {ei-1}  potions: {pi-1}  particles: {xi-1}  structures: {si-1}  excluded: {len(all_excluded)}  categories: {dict(Counter(e.category for e, _ in entries))}")
 
     if args.sheet_png:
         cols = 16

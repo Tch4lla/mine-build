@@ -2,6 +2,7 @@
 import type * as THREE from 'three';
 import * as farm from './farm';
 import * as people from './people';
+import * as st from './structures';
 import { rabbit } from './rabbit';
 import * as v from './vehicles';
 import * as water from './water';
@@ -56,6 +57,26 @@ export const MODELS: Record<string, () => THREE.Object3D> = {
   bamboo_raft: () => v.raft(),
   bamboo_chest_raft: () => v.raft(true),
 };
+Object.assign(MODELS, {
+  village_plains: st.villageMeadow,
+  village_taiga: st.villageTaiga,
+  village_snowy: st.villageSnowy,
+  village_savanna: st.villageSavanna,
+  village_desert: st.villageDesert,
+  forest_abandoned_camp: st.camp,
+  swamp_hut: st.swampHut,
+  jungle_pyramid: st.jungleTemple,
+  desert_pyramid: st.desertTemple,
+  igloo: st.igloo,
+  mineshaft: () => st.mineshaft(),
+  mineshaft_mesa: () => st.mineshaft('#c8784a'),
+  trail_ruins: st.oldRuins,
+  buried_treasure: st.buriedTreasure,
+  shipwreck: () => st.shipwreck(),
+  shipwreck_beached: () => st.shipwreck(true),
+  ocean_ruin_cold: () => st.oceanRuin(false),
+  ocean_ruin_warm: () => st.oceanRuin(true),
+});
 for (const w of ['oak', 'birch', 'spruce', 'jungle', 'dark_oak', 'acacia', 'mangrove', 'cherry']) {
   MODELS[`${w}_boat`] = () => v.boat(w);
   MODELS[`${w}_chest_boat`] = () => v.boat(w, true);
