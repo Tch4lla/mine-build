@@ -122,3 +122,18 @@ npm run build        # static site in dist/
 - Keep prettier, ESLint, typecheck and unit tests clean before pushing. Run the e2e test for UI or gameplay changes.
 - Visual changes: take headless Chromium screenshots and review them before committing.
 - New items need an entry in `src/items/inkArt.ts` (the unit test enforces this). New blocks need a painter in `src/engine/atlas.ts`.
+
+## 8. Sprite library (in progress)
+
+- **What it is:** a library of original Sōzō sprites for the everyday content a sandbox needs. Coverage is decided from a reference list the user supplied (a Minecraft content spreadsheet).
+  - Minecraft-only concepts, paintings, placement states and duplicates are left out.
+  - Distinctive names are renamed, e.g. Deepslate → Shale, Crafting Table → Crafting Bench, copper stages → Tarnished/Patinated/Verdigris.
+  - No reference images are used. Every sprite is drawn as SVG by `tools/sprite-library/`.
+- **Output:** `documents/sozo-sprite-library.xlsx`, with sheets Summary, Blocks, Materials and Not Included.
+- **Rebuild:** follow `tools/sprite-library/README.md`. The reference .xlsx is not in the repo; ask the user for it again, or re-export it with `export_reference.py`.
+- **Batch status:**
+  1. Blocks and materials. ✅ Done: 801 blocks and 50 materials.
+  2. Tools, weapons and armour. Next.
+  3. Food.
+  4. Creatures.
+  5. Effects, particles and structures.
