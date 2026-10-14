@@ -22,6 +22,18 @@ python build.py reference.json ../../documents/sozo-sprite-library.xlsx --sheet-
 | `classify_blocks.py` | Reference block → Sōzō block (name, category, shape, drawing) or excluded                             |
 | `build.py`           | Renders every sprite and writes the spreadsheet                                                       |
 
+## 3D creature sprites
+
+Creatures, vehicles and objects are real 3D models (`render3d/*.ts`) rendered with the game's own toon shading and ink outline from a three-quarter camera. To re-render after changing a model:
+
+```bash
+npx vite --port 5173 &   # from the repo root
+node tools/sprite-library/render3d/render.mjs /tmp/r3 256 0 <model ids...>
+cp /tmp/r3/<id>_0.png tools/sprite-library/sprites3d/<id>.png
+```
+
+Open `/tools/sprite-library/render3d/?model=<id>&turn=<deg>` in the dev server to view a model from any angle. `build.py` uses `sprites3d/<id>.png` for the Creatures sheet.
+
 ## Batches
 
 1. **Blocks and materials.** Done: 801 blocks and 50 materials.

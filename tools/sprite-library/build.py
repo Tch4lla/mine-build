@@ -14,6 +14,7 @@ import argparse
 import io
 import json
 import re
+from pathlib import Path
 from collections import Counter
 
 import cairosvg
@@ -186,7 +187,14 @@ def main() -> None:
         r = 1
         for draw, vals in rows:
             r += 1
-            png = render_png(draw())
+            art = draw()
+            if isinstance(art, bytes):  # a pre-rendered 3D sprite (PNG)
+                im = Image.open(io.BytesIO(art)).convert("RGBA").resize((SPRITE_PX, SPRITE_PX), Image.LANCZOS)
+                buf = io.BytesIO()
+                im.save(buf, "PNG")
+                png = buf.getvalue()
+            else:
+                png = render_png(art)
             previews.append((vals[0], png))
             img = XLImage(io.BytesIO(png))
             img.width = img.height = 64
@@ -276,6 +284,12 @@ def main() -> None:
     # Creatures, vehicles and objects (batch 4).
     ent_ids = [r["Entity ID"] for r in ref["Entities"]["rows"]]
     crit = [c for c in creature_items.creature_catalogue() if c["src"] in ent_ids]
+    # Creatures use the 3D renders (render3d/) when present: real models with the game's toon shading.
+    sprites3d = Path(__file__).parent / "sprites3d"
+    for c in crit:
+        p3 = sprites3d / f"{c['src']}.png"
+        if p3.exists():
+            c["draw"] = (lambda p3=p3: p3.read_bytes())
     crows = [
         (
             c["draw"],

@@ -6,9 +6,7 @@
  */
 import * as THREE from 'three';
 import { InkPass } from '../../../src/view/inkPass';
-import { rabbit } from './rabbit';
-
-const MODELS: Record<string, () => THREE.Object3D> = { rabbit };
+import { MODELS } from './models';
 
 const params = new URLSearchParams(location.search);
 const size = Number(params.get('size') ?? 512);
@@ -90,8 +88,20 @@ const sh = new THREE.Mesh(
   new THREE.MeshBasicMaterial({ color: 0x2a221d, transparent: true, opacity: 0.18, depthWrite: false }),
 );
 sh.rotation.x = -Math.PI / 2;
-sh.scale.set(0.9, 1.3, 1);
-sh.position.set(0, 0.001, -0.05);
+// Size the shadow to the model's footprint.
+const turnY = model.rotation.y;
+model.rotation.y = 0; // measure the footprint unrotated; the shadow pivot applies the turn
+model.updateMatrixWorld(true);
+const foot = new THREE.Box3().setFromObject(model);
+model.rotation.y = turnY;
+model.updateMatrixWorld(true);
+sh.scale.set(
+  Math.max(0.35, (foot.max.x - foot.min.x) * 1.0),
+  Math.max(0.35, (foot.max.z - foot.min.z) * 0.95),
+  1,
+);
+sh.position.set((foot.max.x + foot.min.x) / 2, 0.001, (foot.max.z + foot.min.z) / 2);
+
 const shadowPivot = new THREE.Group();
 shadowPivot.add(sh);
 shadowPivot.rotation.y = model.rotation.y; // the shadow turns with the model
