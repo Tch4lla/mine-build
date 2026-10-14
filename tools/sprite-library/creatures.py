@@ -1,5 +1,8 @@
 """Batch 4 sprites: creatures, the player, vehicles and placed objects.
 
+Creature figures live in bodies.py (full-body, as they look in the world); the portrait helpers
+below are kept for UI use (e.g. a future bestiary).
+
 Creatures are soft, rounded portraits (head and shoulders, or a whole small animal), lit
 left-light / right-dark in three toon tones with a bold ink silhouette: the same recipe as every
 other Sōzō sprite (itemkit.py), and deliberately unlike blocky models.
@@ -14,6 +17,7 @@ from itemkit import DARK, EDGE, LIGHT, MID, Ci, R, clipped, fill, glint, line_pa
 from itemkit import Pd as P
 
 import items_food as food
+import bodies as B
 from materials import WOODS
 
 
@@ -452,29 +456,29 @@ def creature_catalogue() -> list[dict]:
     def add(src, name, category, draw, behaviour="Passive", health=None, habitat="", drops="", special=""):
         rows.append(dict(src=src, name=name, category=category, draw=draw, behaviour=behaviour, health=health, habitat=habitat, drops=drops, special=special))
 
-    add("player", "Explorer (Player)", "Character", player, "—", 10, "Anywhere", "", "You")
-    add("chicken", "Chicken", "Farm Animal", chicken, health=2, habitat="Plains, forests", drops="Raw Chicken, Feather, Egg")
-    add("pig", "Pig", "Farm Animal", pig, health=5, habitat="Plains, forests", drops="Raw Pork Chop", special="Rideable with a Saddle")
-    add("cow", "Cow", "Farm Animal", cow, health=5, habitat="Plains, meadows", drops="Raw Beef, Leather", special="Milkable")
-    add("sheep", "Sheep", "Farm Animal", sheep, health=4, habitat="Plains, hills", drops="Raw Mutton, Wool", special="Shearable, dyeable")
-    add("goat", "Goat", "Farm Animal", goat, "Neutral", 5, "Mountains", "", "Milkable")
-    add("horse", "Horse", "Farm Animal", lambda: equine("#9a6a44", "#4a3424"), health=12, habitat="Plains, savanna", drops="Leather", special="Tameable, rideable")
-    add("donkey", "Donkey", "Farm Animal", lambda: equine("#8f8a80", "#5a5652", ears_long=True, muzzle="#d9d0bc"), health=12, habitat="Plains", drops="Leather", special="Tameable, carries a chest")
-    add("mule", "Mule", "Farm Animal", lambda: equine("#7a5438", "#3a2a22", ears_long=True, muzzle="#c8a888"), health=12, habitat="Bred", drops="Leather", special="Tameable, carries a chest")
-    add("llama", "Llama", "Farm Animal", llama, "Neutral", 10, "Mountains, savanna", "Leather", "Tameable, carries a chest")
-    add("camel", "Camel", "Farm Animal", camel, health=14, habitat="Desert", special="Rideable by two")
-    add("armadillo", "Armadillo", "Wild Animal", armadillo, health=5, habitat="Savanna, badlands")
-    add("rabbit", "Rabbit", "Wild Animal", rabbit, health=2, habitat="Desert, snow, meadows", drops="Raw Rabbit, Rabbit Hide")
-    add("fox", "Fox", "Wild Animal", fox, health=5, habitat="Taiga, snow", special="Picks up items")
-    add("ocelot", "Ocelot", "Wild Animal", lambda: feline("#e8c45a", "#6a4a2a", spots=True), health=5, habitat="Jungle")
-    add("cat", "Cat", "Wild Animal", lambda: feline("#a9a59c", "#6a6660"), health=5, habitat="Villages", special="Tameable")
-    add("wolf", "Wolf", "Wild Animal", wolf, "Neutral", 8, "Forests, taiga", special="Tameable")
-    add("polar_bear", "Polar Bear", "Wild Animal", bear, "Neutral", 15, "Snow, ice", "Raw Cod, Raw Salmon")
-    add("panda", "Panda", "Wild Animal", lambda: bear("#f6f1e6", panda=True), "Neutral", 10, "Bamboo jungle", "Bamboo")
-    add("turtle", "Turtle", "Water Creature", turtle, health=15, habitat="Beaches", special="Lays Turtle Eggs")
-    add("frog", "Frog", "Wild Animal", frog, health=5, habitat="Swamps")
-    add("tadpole", "Tadpole", "Water Creature", tadpole, health=3, habitat="Swamps", special="Grows into a Frog")
-    add("axolotl", "Axolotl", "Water Creature", axolotl, health=7, habitat="Caves with water")
+    add("player", "Explorer (Player)", "Character", B.player, "—", 10, "Anywhere", "", "You")
+    add("chicken", "Chicken", "Farm Animal", B.chicken, health=2, habitat="Plains, forests", drops="Raw Chicken, Feather, Egg")
+    add("pig", "Pig", "Farm Animal", B.pig, health=5, habitat="Plains, forests", drops="Raw Pork Chop", special="Rideable with a Saddle")
+    add("cow", "Cow", "Farm Animal", B.cow, health=5, habitat="Plains, meadows", drops="Raw Beef, Leather", special="Milkable")
+    add("sheep", "Sheep", "Farm Animal", B.sheep, health=4, habitat="Plains, hills", drops="Raw Mutton, Wool", special="Shearable, dyeable")
+    add("goat", "Goat", "Farm Animal", B.goat, "Neutral", 5, "Mountains", "", "Milkable")
+    add("horse", "Horse", "Farm Animal", lambda: B.equine("#9a6a44", "#4a3424"), health=12, habitat="Plains, savanna", drops="Leather", special="Tameable, rideable")
+    add("donkey", "Donkey", "Farm Animal", lambda: B.equine("#8f8a80", "#5a5652", ears_long=True, muzzle="#d9d0bc"), health=12, habitat="Plains", drops="Leather", special="Tameable, carries a chest")
+    add("mule", "Mule", "Farm Animal", lambda: B.equine("#7a5438", "#3a2a22", ears_long=True, muzzle="#c8a888"), health=12, habitat="Bred", drops="Leather", special="Tameable, carries a chest")
+    add("llama", "Llama", "Farm Animal", B.llama, "Neutral", 10, "Mountains, savanna", "Leather", "Tameable, carries a chest")
+    add("camel", "Camel", "Farm Animal", B.camel, health=14, habitat="Desert", special="Rideable by two")
+    add("armadillo", "Armadillo", "Wild Animal", B.armadillo, health=5, habitat="Savanna, badlands")
+    add("rabbit", "Rabbit", "Wild Animal", B.rabbit, health=2, habitat="Desert, snow, meadows", drops="Raw Rabbit, Rabbit Hide")
+    add("fox", "Fox", "Wild Animal", B.fox, health=5, habitat="Taiga, snow", special="Picks up items")
+    add("ocelot", "Ocelot", "Wild Animal", lambda: B.feline("#e8c45a", "#6a4a2a", spots=True), health=5, habitat="Jungle")
+    add("cat", "Cat", "Wild Animal", lambda: B.feline("#a9a59c", "#6a6660"), health=5, habitat="Villages", special="Tameable")
+    add("wolf", "Wolf", "Wild Animal", B.wolf, "Neutral", 8, "Forests, taiga", special="Tameable")
+    add("polar_bear", "Polar Bear", "Wild Animal", B.bear, "Neutral", 15, "Snow, ice", "Raw Cod, Raw Salmon")
+    add("panda", "Panda", "Wild Animal", lambda: B.bear("#f6f1e6", panda=True), "Neutral", 10, "Bamboo jungle", "Bamboo")
+    add("turtle", "Turtle", "Water Creature", B.turtle, health=15, habitat="Beaches", special="Lays Turtle Eggs")
+    add("frog", "Frog", "Wild Animal", B.frog, health=5, habitat="Swamps")
+    add("tadpole", "Tadpole", "Water Creature", B.tadpole, health=3, habitat="Swamps", special="Grows into a Frog")
+    add("axolotl", "Axolotl", "Water Creature", B.axolotl, health=7, habitat="Caves with water")
     add("dolphin", "Dolphin", "Water Creature", dolphin, "Neutral", 10, "Oceans", "Raw Cod")
     add("cod", "Cod", "Water Creature", lambda: food.fish("#b8a888"), health=2, habitat="Oceans", drops="Raw Cod")
     add("salmon", "Salmon", "Water Creature", lambda: food.fish("#d0705a"), health=2, habitat="Rivers, cold oceans", drops="Raw Salmon")
@@ -482,15 +486,15 @@ def creature_catalogue() -> list[dict]:
     add("pufferfish", "Pufferfish", "Water Creature", food.pufferfish, "Defensive", 2, "Warm oceans", "Pufferfish")
     add("nautilus", "Nautilus", "Water Creature", nautilus, health=8, habitat="Oceans")
     add("squid", "Squid", "Water Creature", squid, health=5, habitat="Oceans, rivers", drops="Ink Sac")
-    add("bee", "Bee", "Flying", bee, "Neutral", 5, "Meadows, flower forests", special="Makes honey")
-    add("parrot", "Parrot", "Flying", parrot, health=3, habitat="Jungle", drops="Feather", special="Tameable, mimics sounds")
-    add("bat", "Bat", "Flying", bat, health=3, habitat="Caves")
-    add("slime", "Puffball", "Monster", puffball, "Hostile", 4, "Swamps, caves", "Puff Gel", "Splits when hit")
-    add("zombie", "Zombie", "Monster", zombie, "Hostile", 10, "Anywhere at night", "Spoiled Meat")
-    add("skeleton", "Skeleton", "Monster", skeleton, "Hostile", 10, "Anywhere at night", "Bone, Arrow")
-    add("spider", "Spider", "Monster", spider, "Hostile", 8, "Anywhere at night", "String, Spider Eye", "Climbs walls")
-    add("witch", "Witch", "Monster", witch, "Hostile", 13, "Swamps")
-    add("snow_golem", "Snowman", "Character", snowman, "Friendly", 2, "Built by the player", "Snowball", "Throws snowballs at monsters")
+    add("bee", "Bee", "Flying", B.bee, "Neutral", 5, "Meadows, flower forests", special="Makes honey")
+    add("parrot", "Parrot", "Flying", B.parrot, health=3, habitat="Jungle", drops="Feather", special="Tameable, mimics sounds")
+    add("bat", "Bat", "Flying", B.bat, health=3, habitat="Caves")
+    add("slime", "Puffball", "Monster", B.puffball, "Hostile", 4, "Swamps, caves", "Puff Gel", "Splits when hit")
+    add("zombie", "Zombie", "Monster", B.zombie, "Hostile", 10, "Anywhere at night", "Spoiled Meat")
+    add("skeleton", "Skeleton", "Monster", B.skeleton, "Hostile", 10, "Anywhere at night", "Bone, Arrow")
+    add("spider", "Spider", "Monster", B.spider, "Hostile", 8, "Anywhere at night", "String, Spider Eye", "Climbs walls")
+    add("witch", "Witch", "Monster", B.witch, "Hostile", 13, "Swamps")
+    add("snow_golem", "Snowman", "Character", B.snowman, "Friendly", 2, "Built by the player", "Snowball", "Throws snowballs at monsters")
     woods = ["oak", "birch", "spruce", "jungle", "dark_oak", "acacia", "mangrove", "cherry"]
     for w in woods:
         nice = w.replace("_", " ").title()

@@ -137,5 +137,5 @@ npm run build        # static site in dist/
   1. Blocks and materials. ✅ Done: 801 blocks and 50 materials.
   2. Tools, weapons and armour. ✅ Done: 112 sprites with Sōzō damage, durability, mining speed and defence values.
   3. Food. ✅ Done: 47 sprites with Energy, Meal Size, Cooks Into and Effect. Potions moved to batch 5.
-  4. Creatures. ✅ Done: 63 sprites. Creatures are soft rounded portraits, not blocky models. Minecraft-only mobs, villagers and golems are excluded.
+  4. Creatures. ✅ Done: 63 sprites. Creatures are full-body figures in a three-quarter view (how they'll look in the world), built from rounded toy-like parts like the in-game Puffball, not blocky models (`bodies.py`). Minecraft-only mobs, villagers and golems are excluded.
   5. Effects, potions, particles and structures. Next.
