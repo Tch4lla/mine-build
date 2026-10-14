@@ -10,21 +10,22 @@ python export_reference.py "sprite_list.xlsx" reference.json   # names/IDs/facts
 python build.py reference.json ../../documents/sozo-sprite-library.xlsx --sheet-png preview.png
 ```
 
-| File                 | What it does                                                              |
-| -------------------- | ------------------------------------------------------------------------- |
-| `geometry.py`        | Isometric box projection, colour helpers, SVG document wrapper            |
-| `patterns.py`        | Brush patterns for block faces (planks, bricks, ore flecks, glass…)       |
-| `materials.py`       | Sōzō palette: stones, woods, dyes, metals and copper stages               |
-| `shapes.py`          | Block shapes (cube, slab, stairs, wall, fence, door…) and special blocks  |
-| `plants.py`          | Flowers, grasses, saplings, mushrooms, coral, crops                       |
-| `items_materials.py` | Batch 1 item sprites: crafting materials and dyes                         |
-| `classify_blocks.py` | Reference block → Sōzō block (name, category, shape, drawing) or excluded |
-| `build.py`           | Renders every sprite and writes the spreadsheet                           |
+| File                 | What it does                                                                                          |
+| -------------------- | ----------------------------------------------------------------------------------------------------- |
+| `geometry.py`        | Isometric box projection, colour helpers, SVG document wrapper                                        |
+| `patterns.py`        | Brush patterns for block faces (planks, bricks, ore flecks, glass…)                                   |
+| `materials.py`       | Sōzō palette: stones, woods, dyes, metals and copper stages                                           |
+| `shapes.py`          | Block shapes (cube, slab, stairs, wall, fence, door…) and special blocks                              |
+| `plants.py`          | Flowers, grasses, saplings, mushrooms, coral, crops                                                   |
+| `items_materials.py` | Batch 1 item sprites: crafting materials and dyes                                                     |
+| `creatures.py`       | Batch 4 sprites and Sōzō data: creature portraits, the player, boats, carts, armour stand, item frame |
+| `classify_blocks.py` | Reference block → Sōzō block (name, category, shape, drawing) or excluded                             |
+| `build.py`           | Renders every sprite and writes the spreadsheet                                                       |
 
 ## Batches
 
 1. **Blocks and materials.** Done: 801 blocks and 50 materials.
 2. **Tools, weapons and armour.** Done: 112 sprites (6 tiers × 6 tools, 6 armour sets, plus ranged, utility, buckets, riding, pouches and throwables).
 3. **Food.** Done: 47 sprites with Energy Restored, Meal Size, Cooks Into and Effect.
-4. Creatures.
+4. **Creatures.** Done: 63 sprites (animals, generic monsters, the player, boats, carts and display objects).
 5. Effects, particles and structures.

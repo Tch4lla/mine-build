@@ -129,12 +129,13 @@ npm run build        # static site in dist/
   - Minecraft-only concepts, paintings, placement states and duplicates are left out.
   - Distinctive names are renamed, e.g. Deepslate → Shale, Crafting Table → Crafting Bench, copper stages → Tarnished/Patinated/Verdigris.
   - No reference images are used. Every sprite is drawn as SVG by `tools/sprite-library/`.
-- **Output:** `documents/sozo-sprite-library.xlsx`, with sheets Summary, Blocks, Materials, Tools & Gear, Food and Not Included.
+- **Output:** `documents/sozo-sprite-library.xlsx`, with sheets Summary, Blocks, Materials, Tools & Gear, Food, Creatures and Not Included.
+- **Style decision pending:** the library is a more polished, more detailed take on the world's Ink & Wash look (bolder outlines, glints, more brushwork). The user will decide once the sprites are in the game whether the game should match the library or the library should be toned down to match the world. Until then, keep both as they are.
 - **Quality bar** (the user asked for this to be kept): match the batch-1 materials recipe in `itemkit.py`, i.e. a bold ink silhouette, three toon tones, thin inner edges and glints.
 - **Rebuild:** follow `tools/sprite-library/README.md`. The reference .xlsx is not in the repo; ask the user for it again, or re-export it with `export_reference.py`.
 - **Batch status:**
   1. Blocks and materials. ✅ Done: 801 blocks and 50 materials.
   2. Tools, weapons and armour. ✅ Done: 112 sprites with Sōzō damage, durability, mining speed and defence values.
   3. Food. ✅ Done: 47 sprites with Energy, Meal Size, Cooks Into and Effect. Potions moved to batch 5.
-  4. Creatures. Next.
-  5. Effects, particles and structures.
+  4. Creatures. ✅ Done: 63 sprites. Creatures are soft rounded portraits, not blocky models. Minecraft-only mobs, villagers and golems are excluded.
+  5. Effects, potions, particles and structures. Next.
