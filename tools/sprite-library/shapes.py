@@ -147,14 +147,24 @@ def hanging_sign(m: Mat, r: Rand) -> str:
 
 
 def shelf(m: Mat, r: Rand) -> str:
-    return boxes_svg(
-        [
-            Box(0.8, 1, 0, 1, 0, 1, m.color, m.top, m.side),
-            Box(0, 0.8, 0, 1, 0.45, 0.58, m.color, m.top, m.side),
-            Box(0, 0.8, 0, 1, 0, 0.1, m.color, m.top, m.side),
-        ],
-        r,
-    )
+    """An open shelf unit facing the front-right, with a few things on its boards."""
+    c, top, side = m.color, m.top, m.side
+    dark = shade(c, 0.78)
+    parts = [
+        Box(0.88, 1, 0, 1, 0, 1, dark, top, side),  # back panel
+        Box(0, 0.88, 0, 0.1, 0, 1, c, top, side),  # far side
+        Box(0, 0.88, 0.1, 1, 0, 0.1, c, top, side),  # bottom board
+        # lower shelf: books
+        Box(0.08, 0.34, 0.2, 0.34, 0.1, 0.4, "#c0533a"),
+        Box(0.08, 0.34, 0.36, 0.48, 0.1, 0.37, "#3f7f86"),
+        Box(0.08, 0.34, 0.5, 0.62, 0.1, 0.42, "#e8c45a"),
+        Box(0, 0.88, 0.1, 1, 0.47, 0.56, c, top, side),  # middle board
+        # upper shelf: a jar
+        Box(0.06, 0.34, 0.5, 0.8, 0.56, 0.84, "#a9cfd8"),
+        Box(0, 0.88, 0.1, 1, 0.9, 1, c, top, side),  # top board
+        Box(0, 0.88, 0.9, 1, 0, 1, c, top, side),  # near side
+    ]
+    return boxes_svg(parts, r)
 
 
 def bed(color: str, r: Rand) -> str:
