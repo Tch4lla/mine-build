@@ -140,3 +140,15 @@ npm run build        # static site in dist/
   4. Creatures. ✅ Done: 63 sprites. Creatures, vehicles and objects are **real 3D models** (`tools/sprite-library/render3d/`, Three.js) rendered with the game's toon shading and InkPass outline from a three-quarter camera. They use rounded, toy-like parts like the in-game Puffball, and every model has had a 360° check (`documents/creatures-3d-turnaround-*.png`). The models can later be used in-game directly. Minecraft-only mobs, villagers and golems are excluded.
   5. Effects, potions, particles and structures. ✅ Done: 27 effects, 47 potions, 39 particles (2D, because they are flat in-game) and 18 structures (3D dioramas, 360°-checked).
 - **Next steps:** bring the sprites and 3D models into the game (item icons, creature models, structure generation). Then the user decides the style question.
+
+## 9. Sprite library import (in progress)
+
+The agreed plan imports **all** library entries as playable content, in phases. The user reviews each phase in the world before the next one starts.
+
+0. **Export pipeline.** ✅ Done. `npm run sprites:export` (`tools/sprite-library/export_game.py`) writes `src/generated/` (data, SVG art, stable block ids) and `public/library/` (flat block-face atlas, 3D sprites). Review page: `/library.html` in the dev server.
+1. 16-bit block storage (12-bit id + 4-bit state) and a save migration.
+2. Library blocks in the world (shapes, placement state), plus an "Art: World / Library" settings toggle for the style decision.
+3. Items: tools, armour, food (Energy bar), materials, recipes.
+4. Effects, potions and particles.
+5. Creatures and vehicles (render3d models move into `src/entities/models/`).
+6. Structures as voxel blueprints placed by terrain generation.

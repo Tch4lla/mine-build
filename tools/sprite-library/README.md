@@ -21,6 +21,26 @@ python build.py reference.json ../../documents/sozo-sprite-library.xlsx --sheet-
 | `creatures.py`       | Batch 4 sprites and Sōzō data: creature portraits, the player, boats, carts, armour stand, item frame |
 | `classify_blocks.py` | Reference block → Sōzō block (name, category, shape, drawing) or excluded                             |
 | `build.py`           | Renders every sprite and writes the spreadsheet                                                       |
+| `export_game.py`     | Exports the library as game assets (see below)                                                        |
+
+## Exporting to the game
+
+`export_game.py` turns the library into game assets. It reads `documents/sozo-sprite-library.xlsx` as the manifest (so the reference list isn't needed), re-draws every entry and writes:
+
+| Output                        | What it holds                                                                           |
+| ----------------------------- | --------------------------------------------------------------------------------------- |
+| `src/generated/library.ts`    | Typed data for every sheet (types in `src/library/types.ts`)                            |
+| `src/generated/libraryArt.ts` | SVG body of every 2D sprite, keyed `block:`, `item:`, `effect:` or `particle:` + id     |
+| `src/generated/blockIds.json` | Stable numeric block ids. Append-only: core blocks keep theirs, new keys are appended   |
+| `public/library/blocks.png`   | Flat 32 px face textures for blocks (cubes get top/side/bottom, others one sprite tile) |
+| `public/library/models/*.png` | The 3D-rendered creature, vehicle and structure sprites                                 |
+
+```bash
+pip install cairosvg openpyxl pillow
+npm run sprites:export     # from the repo root; fails on any missing drawing or id clash
+```
+
+Generated files are committed, so building the game doesn't need Python. Check the result in the dev server at `/library.html` (`?view=pairs` compares the world's blocks with their library look).
 
 ## 3D creature sprites
 

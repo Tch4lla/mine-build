@@ -12,7 +12,8 @@
     "lint": "eslint src tests",
     "format": "prettier --write .",
     "test": "vitest run",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "sprites:export": "python3 tools/sprite-library/export_game.py"
   },
   "dependencies": {
     "@dimforge/rapier3d-compat": "^0.21.0",
