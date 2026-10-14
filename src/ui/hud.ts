@@ -134,6 +134,18 @@ export class Hud {
     this.breakRing.setAttribute('stroke-dashoffset', String(94.25 * (1 - Math.min(1, p))));
   }
 
+  /** Fades the screen to ink and back, calling `atDark` while it is fully dark. */
+  fade(atDark: () => void, ms = 700): void {
+    const veil = h('div', { class: 'sleep-veil' });
+    document.body.append(veil);
+    requestAnimationFrame(() => veil.classList.add('on'));
+    setTimeout(() => {
+      atDark();
+      veil.classList.remove('on');
+      setTimeout(() => veil.remove(), ms);
+    }, ms + 300);
+  }
+
   toast(msg: string): void {
     const t = h('div', { class: 'toast' }, msg);
     this.toasts.append(t);

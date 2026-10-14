@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AIR, GLASS, STONE, WATER } from '../../src/world/blocks';
+import { AIR, GLASS, STONE, WATER, WATER_FLOW } from '../../src/world/blocks';
 import {
   CHUNK_VOLUME,
   ChunkData,
@@ -51,7 +51,26 @@ describe('chunk mesher', () => {
     c.set(2, 1, 1, WATER);
     const { solid, water } = meshChunk(c, empty);
     expect(faces(solid)).toBe(0);
-    expect(faces(water)).toBe(10);
+    // 10 outer faces, plus the two surface faces drawn again facing down (seen from underwater).
+    expect(faces(water)).toBe(12);
+  });
+
+  it('shares surface heights between neighbouring water so flows slope smoothly', () => {
+    const c = new ChunkData(0, 0);
+    c.set(1, 1, 1, WATER);
+    c.set(2, 1, 1, WATER_FLOW[5]);
+    const { water } = meshChunk(c, empty);
+    // Every top-surface vertex on the shared edge (x = 2) sits at the source's full height.
+    const tops: number[] = [];
+    for (let i = 0; i < water.positions.length; i += 3)
+      if (water.positions[i] === 2 && water.normals[i + 1] === 1) tops.push(water.positions[i + 1]);
+    expect(tops.length).toBeGreaterThan(0);
+    expect(new Set(tops).size).toBe(1);
+    // The far edge of the weaker flow is lower than the shared edge.
+    let far = Infinity;
+    for (let i = 0; i < water.positions.length; i += 3)
+      if (water.positions[i] === 3 && water.normals[i + 1] === 1) far = Math.min(far, water.positions[i + 1]);
+    expect(far).toBeLessThan(tops[0]);
   });
 
   it('uses neighbour samples at chunk borders', () => {

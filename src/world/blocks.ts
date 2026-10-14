@@ -333,6 +333,8 @@ function libShape(b: LibBlock): BlockShape {
       return b.shape;
     case 'bars':
       return 'pane';
+    case 'bed':
+      return 'bed';
     case 'sign':
     case 'hanging_sign':
     case 'banner':

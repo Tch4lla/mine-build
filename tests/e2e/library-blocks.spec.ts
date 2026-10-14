@@ -48,6 +48,60 @@ test('library blocks: place, open, stand on, art style and catalogue', async ({ 
   expect(placed.door[0]).toBe(placed.door[1]);
   expect(placed.door[2] & 4).toBe(4); // the upper half
 
+  // A bed is two blocks long; sleeping passes the time to the next sunrise or sunset.
+  const bed = await page.evaluate(({ x, y, z }) => {
+    const g = window.__game!;
+    const w = g.world;
+    g.mobs.spawningEnabled = false;
+    for (const m of [...g.mobs.list]) g.mobs.remove(m);
+    const aim = (px: number, pz: number) => {
+      g.player.teleport(px + 0.5, y + 2.6, pz + 0.5);
+      g.player.pitch = -Math.PI / 2 + 0.02;
+      g.player.yaw = 0;
+    };
+    aim(x, z + 2);
+    g.inventory.slots[g.inventory.selected] = { id: 'red_bed', count: 1 };
+    g.debugUseHeld();
+    const halves = [w.getBlock(x, y, z + 2), w.getBlock(x, y, z + 1), w.getBlockState(x, y, z + 1) & 4];
+    g.inventory.slots[g.inventory.selected] = null;
+    g.sky.time = 0.9;
+    g.debugUseHeld();
+    return { halves };
+  }, placed);
+  expect(bed.halves[0]).toBeGreaterThan(27);
+  expect(bed.halves[1]).toBe(bed.halves[0]);
+  expect(bed.halves[2]).toBe(4); // the head
+  await page.waitForFunction(() => Math.abs(window.__game!.sky.time - 0.25) < 0.02, null, {
+    timeout: 10_000,
+  });
+  const slept = await page.evaluate(({ x, y, z }) => {
+    const g = window.__game!;
+    const spawn = (g as unknown as { spawn: { x: number; y: number; z: number } }).spawn;
+    g.sky.time = 0.4;
+    g.debugUseHeld();
+    return { spawn: [Math.floor(spawn.x), Math.floor(spawn.y), Math.floor(spawn.z)], bed: [x, y, z + 2] };
+  }, placed);
+  expect(slept.spawn).toEqual(slept.bed);
+  await page.waitForFunction(() => Math.abs(window.__game!.sky.time - 0.75) < 0.02, null, {
+    timeout: 10_000,
+  });
+  await page.waitForTimeout(1500);
+  await page.evaluate(({ x, y, z }) => {
+    const g = window.__game!;
+    g.player.teleport(x + 0.5, y + 1.6, z + 4.4);
+    g.player.pitch = -0.55;
+  }, placed);
+  await page.waitForTimeout(800);
+  await shot(page, 'lib-00-bed');
+  const broken = await page.evaluate(({ x, y, z }) => {
+    const g = window.__game!;
+    g.player.teleport(x + 0.5, y + 2.6, z + 1.5);
+    g.player.pitch = -Math.PI / 2 + 0.02;
+    g.debugAttack();
+    return [g.world.getBlock(x, y, z + 1), g.world.getBlock(x, y, z + 2)];
+  }, placed);
+  expect(broken).toEqual([0, 0]);
+
   // Right-click opens the door (both halves).
   const opened = await page.evaluate(({ x, y, z }) => {
     const g = window.__game!;

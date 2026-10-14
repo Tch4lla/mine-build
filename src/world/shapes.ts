@@ -25,7 +25,9 @@ export type BlockShape =
   /** Two crossed sprite quads: plants, torches, lanterns... (drawn only, no collision). */
   | 'cross'
   /** One upright sprite quad across the block, turned to face the player: signs and banners. */
-  | 'flat';
+  | 'flat'
+  /** Half of a two-block bed: the foot, or the head (TOP bit) one block further in its facing. */
+  | 'bed';
 
 /** [x0, y0, z0, x1, y1, z1] in block space (0–1; collision boxes may reach 1.5 high). */
 export type Box = [number, number, number, number, number, number];
@@ -35,6 +37,8 @@ export interface ShapeBox {
   /** Maps block y to texture v as v = vOffset + y * vScale (doors span two blocks). */
   vOffset?: number;
   vScale?: number;
+  /** Draw this box with another atlas tile (a bed's pillow and legs). */
+  tile?: string;
 }
 
 export const FACING = 3;
@@ -163,10 +167,35 @@ export function shapeBoxes({ shape, state, conn = 0, box }: ShapeInput, collisio
     }
     case 'box':
       return wrap([rotateBox(box ?? [0, 0, 0, 1, 1, 1], f)]);
+    case 'bed': {
+      // Facing north: the head is the northern block, its pillow against the north end.
+      const out: ShapeBox[] = [{ box: [0, px(3), 0, 1, px(9), 1] }];
+      const lz = top ? 0 : px(13);
+      for (const lx of [0, px(13)])
+        out.push({ box: [lx, 0, lz, lx + px(3), px(3), lz + px(3)], tile: 'planks' });
+      if (top) out.push({ box: [px(2), px(9), px(1), px(14), px(12), px(6)], tile: 'wool' });
+      if (collision) return [{ box: rotateBox([0, 0, 0, 1, px(9), 1], f) }];
+      return out.map((b) => ({ ...b, box: rotateBox(b.box, f) }));
+    }
     case 'cross':
     case 'flat':
       return [];
   }
+}
+
+/**
+ * Blocks made of two cells (doors stand two high, beds lie two long): where the other half is,
+ * relative to this one, or null for single-cell shapes. The TOP bit marks the upper door half and
+ * the bed's head.
+ */
+export function partnerOffset(shape: BlockShape, state: number): [number, number, number] | null {
+  const top = (state & TOP) !== 0;
+  if (shape === 'door') return [0, top ? -1 : 1, 0];
+  if (shape === 'bed') {
+    const [dx, dz] = FACING_DIR[facingOf(state)];
+    return top ? [0 - dx, 0, 0 - dz] : [dx, 0, dz];
+  }
+  return null;
 }
 
 /** Shapes that join up with neighbours, and which neighbours they join. */

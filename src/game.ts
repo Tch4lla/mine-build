@@ -22,9 +22,9 @@ import {
 import { raycastVoxels, type VoxelHit } from './world/raycast';
 import { SEA_LEVEL } from './world/terrain';
 import { ATLAS_COLS, TILE_PX, tileIndex } from './world/tiles';
-import { refreshBlockUVs } from './world/chunkMesher';
+import { refreshBlockUVs, targetBounds } from './world/chunkMesher';
 import { clearIconCache } from './items/icons';
-import { OPEN, TOP, facingFromYaw, type BlockShape } from './world/shapes';
+import { OPEN, TOP, facingFromYaw, partnerOffset, type BlockShape } from './world/shapes';
 import { Player } from './player/player';
 import { Inventory, HOTBAR_SIZE, type ItemStack } from './items/inventory';
 import { item } from './items/items';
@@ -173,7 +173,9 @@ export class Game implements ScreenHost {
       transparent: true,
       // Writes depth so the ink pass outlines the water's surface, not the seabed under it.
       depthWrite: true,
-      side: THREE.DoubleSide,
+      // Front faces only, so faces seen through other water don't blend twice (the surface is
+      // meshed both ways up, see chunkMesher).
+      side: THREE.FrontSide,
     });
     this.world = new World(meta.seed, this.physics, solid, water);
     this.world.loadModifiedChunks(chunks);
@@ -204,7 +206,8 @@ export class Game implements ScreenHost {
     );
 
     this.highlight = new THREE.LineSegments(
-      new THREE.EdgesGeometry(new THREE.BoxGeometry(1.004, 1.004, 1.004)),
+      // A unit box, scaled to the aimed-at block's shape in updateTarget().
+      new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1)),
       new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.55 }),
     );
     this.highlight.visible = false;
@@ -888,8 +891,18 @@ export class Game implements ScreenHost {
 
     this.target = best;
     if (best?.kind === 'block' && !this.tether.held) {
+      const { x, y, z } = best.hit;
+      const b = targetBounds(
+        (bx, by, bz) => this.world.getBlock(bx, by, bz),
+        (bx, by, bz) => this.world.getBlockState(bx, by, bz),
+        x,
+        y,
+        z,
+      );
+      const pad = 0.004;
       this.highlight.visible = true;
-      this.highlight.position.set(best.hit.x + 0.5, best.hit.y + 0.5, best.hit.z + 0.5);
+      this.highlight.scale.set(b[3] - b[0] + pad, b[4] - b[1] + pad, b[5] - b[2] + pad);
+      this.highlight.position.set(x + (b[0] + b[3]) / 2, y + (b[1] + b[4]) / 2, z + (b[2] + b[5]) / 2);
     } else this.highlight.visible = false;
 
     let label = '';
@@ -1047,19 +1060,11 @@ export class Game implements ScreenHost {
     const id = this.world.getBlock(x, y, z);
     if (id === AIR || id === BEDROCK || isWater(id)) return;
     const b = BLOCKS[id];
+    // Doors and beds are two blocks: take the other half too (it drops nothing of its own).
+    const partner = this.partnerOf(x, y, z);
     // Neighbouring water flows in and unsupported sand falls via BlockUpdates.
     this.world.setBlock(x, y, z, AIR);
-    // A door is two blocks: take the other half with it (it drops nothing of its own).
-    if (b.shape === 'door') {
-      const oy = this.world.getBlockState(x, y, z) & TOP ? -1 : 1;
-      const other =
-        this.world.getBlock(x, y + oy, z) === id
-          ? y + oy
-          : this.world.getBlock(x, y - oy, z) === id
-            ? y - oy
-            : null;
-      if (other !== null) this.world.setBlock(x, other, z, AIR);
-    }
+    if (partner) this.world.setBlock(partner[0], partner[1], partner[2], AIR);
     this.particles.burst(new THREE.Vector3(x + 0.5, y + 0.5, z + 0.5), tileColor(b.tiles.side), 16, {
       speed: 3,
     });
@@ -1192,15 +1197,18 @@ export class Game implements ScreenHost {
         return;
       }
     }
-    // Doors, trapdoors and gates open and close (Shift places against them instead).
-    if (
-      justPressed &&
-      t?.kind === 'block' &&
-      OPENABLE.has(BLOCKS[t.hit.id].shape ?? 'cube') &&
-      !this.input.isDown('ShiftLeft')
-    ) {
-      this.toggleOpen(t.hit.x, t.hit.y, t.hit.z);
-      return;
+    // Doors, trapdoors and gates open and close, and beds are slept in (Shift places against them
+    // instead).
+    if (justPressed && t?.kind === 'block' && !this.input.isDown('ShiftLeft')) {
+      const shape = BLOCKS[t.hit.id].shape ?? 'cube';
+      if (OPENABLE.has(shape)) {
+        this.toggleOpen(t.hit.x, t.hit.y, t.hit.z);
+        return;
+      }
+      if (shape === 'bed') {
+        this.sleep(t.hit.x, t.hit.y, t.hit.z);
+        return;
+      }
     }
     if (!held) return;
     const def = item(held.id);
@@ -1218,9 +1226,11 @@ export class Game implements ScreenHost {
         if (!this.canPlaceAt(x, y, z)) return;
         const shape = BLOCKS[def.block].shape ?? 'cube';
         const state = placementState(shape, this.player.yaw, t.hit.ny, t.point.y - Math.floor(t.point.y));
-        if (shape === 'door') {
-          if (!this.canPlaceAt(x, y + 1, z)) return;
-          this.world.setBlock(x, y + 1, z, def.block, state | TOP);
+        const half = partnerOffset(shape, state);
+        if (half) {
+          const [px, py, pz] = [x + half[0], y + half[1], z + half[2]];
+          if (!this.canPlaceAt(px, py, pz)) return;
+          this.world.setBlock(px, py, pz, def.block, state | TOP);
         }
         this.world.setBlock(x, y, z, def.block, state);
         this.world.flushDirtyNear(new THREE.Vector3(x, y, z));
@@ -1330,14 +1340,41 @@ export class Game implements ScreenHost {
   /** Opens or closes a door (both halves), trapdoor or gate. */
   private toggleOpen(x: number, y: number, z: number): void {
     const id = this.world.getBlock(x, y, z);
+    const partner = this.partnerOf(x, y, z);
     const state = this.world.getBlockState(x, y, z) ^ OPEN;
     this.world.setBlock(x, y, z, id, state);
-    if (BLOCKS[id].shape === 'door') {
-      const oy = state & TOP ? -1 : 1;
-      if (this.world.getBlock(x, y + oy, z) === id) this.world.setBlock(x, y + oy, z, id, state ^ TOP);
-    }
+    if (partner) this.world.setBlock(partner[0], partner[1], partner[2], id, state ^ TOP);
     this.world.flushDirtyNear(new THREE.Vector3(x, y, z));
     this.viewmodel.doSwing();
+  }
+
+  /** The other half of a two-block door or bed, if it is still there. */
+  private partnerOf(x: number, y: number, z: number): [number, number, number] | null {
+    const id = this.world.getBlock(x, y, z);
+    const state = this.world.getBlockState(x, y, z);
+    const o = partnerOffset(BLOCKS[id].shape ?? 'cube', state);
+    if (!o) return null;
+    const p: [number, number, number] = [x + o[0], y + o[1], z + o[2]];
+    const other = this.world.getBlockState(p[0], p[1], p[2]);
+    return this.world.getBlock(p[0], p[1], p[2]) === id && (other & TOP) !== (state & TOP) ? p : null;
+  }
+
+  /**
+   * Sleeps in a bed, by day or by night: time passes to the next sunset (by day) or sunrise (by
+   * night), and the bed becomes the respawn point. Not with Puffballs close by.
+   */
+  private sleep(x: number, y: number, z: number): void {
+    const bed = new THREE.Vector3(x + 0.5, y + 0.6, z + 0.5);
+    if (this.mobs.list.some((m) => m.kind === 'slime' && m.mesh.position.distanceTo(bed) < 8)) {
+      this.toast("You can't sleep with Puffballs nearby.");
+      return;
+    }
+    const day = this.sky.time >= 0.25 && this.sky.time < 0.75;
+    this.spawn.copy(bed);
+    this.hud.fade(() => {
+      this.sky.time = day ? 0.75 : 0.25;
+      this.toast(day ? 'You slept until evening.' : 'You slept until morning.');
+    });
   }
 
   private canPlaceAt(x: number, y: number, z: number): boolean {
@@ -1618,7 +1655,8 @@ export class Game implements ScreenHost {
       }
     for (const [x, by, z, id, state] of place) {
       this.world.setBlock(x, by, z, id, state);
-      if (BLOCKS[id].shape === 'door') this.world.setBlock(x, by + 1, z, id, state | TOP);
+      const half = partnerOffset(BLOCKS[id].shape ?? 'cube', state);
+      if (half) this.world.setBlock(x + half[0], by + half[1], z + half[2], id, state | TOP);
     }
     // Stand at the front edge, a little raised, looking over the rows.
     this.player.flying = true;

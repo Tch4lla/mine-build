@@ -1,8 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { BLOCKS, FULL_SOLID, IS_SOLID, blockByKey } from '../../src/world/blocks';
 import { ChunkData } from '../../src/world/chunk';
-import { meshChunk, shapeColliderBoxes } from '../../src/world/chunkMesher';
-import { CONNECT, OPEN, TOP, facingFromYaw, rotateBox, shapeBoxes } from '../../src/world/shapes';
+import { meshChunk, shapeColliderBoxes, targetBounds } from '../../src/world/chunkMesher';
+import {
+  CONNECT,
+  OPEN,
+  TOP,
+  facingFromYaw,
+  partnerOffset,
+  rotateBox,
+  shapeBoxes,
+} from '../../src/world/shapes';
 import { LIB_BLOCKS } from '../../src/generated/library';
 
 const id = (key: string) => blockByKey(key)!.id;
@@ -84,5 +92,45 @@ describe('meshing shaped blocks', () => {
     c.set(4, 1, 4, id('poppy'));
     const boxes = shapeColliderBoxes(c, empty);
     expect(Array.from(boxes)).toEqual([1, 1.5, 1, 2, 2, 2]);
+  });
+});
+
+describe('two-block doors and beds', () => {
+  it('finds the other half', () => {
+    expect(partnerOffset('door', 0)).toEqual([0, 1, 0]);
+    expect(partnerOffset('door', TOP)).toEqual([0, -1, 0]);
+    // A bed placed looking east has its head one block east of the foot.
+    expect(partnerOffset('bed', 1)).toEqual([1, 0, 0]);
+    expect(partnerOffset('bed', 1 | TOP)).toEqual([-1, 0, 0]);
+    expect(partnerOffset('slab', 0)).toBeNull();
+  });
+
+  it('draws a pillow only on the head, in wool', () => {
+    expect(shapeBoxes({ shape: 'bed', state: 0 }).some((b) => b.tile === 'wool')).toBe(false);
+    expect(shapeBoxes({ shape: 'bed', state: TOP }).some((b) => b.tile === 'wool')).toBe(true);
+    expect(shapeBoxes({ shape: 'bed', state: 0 }, true)[0].box[4]).toBe(9 / 16);
+  });
+
+  it('registers library beds as beds', () => {
+    expect(blockByKey('red_bed')!.shape).toBe('bed');
+  });
+});
+
+describe('targeting outline', () => {
+  const world = (blocks: Record<string, number>, states: Record<string, number> = {}) => ({
+    get: (x: number, y: number, z: number) => blocks[`${x},${y},${z}`] ?? 0,
+    state: (x: number, y: number, z: number) => states[`${x},${y},${z}`] ?? 0,
+  });
+  it('hugs slabs, plants and lone fences instead of the whole cell', () => {
+    const w = world({ '0,0,0': id('oak_slab'), '1,0,0': id('poppy'), '2,0,0': id('oak_fence') });
+    expect(targetBounds(w.get, w.state, 0, 0, 0)).toEqual([0, 0, 0, 1, 0.5, 1]);
+    expect(targetBounds(w.get, w.state, 1, 0, 0)[0]).toBeGreaterThan(0);
+    const fence = targetBounds(w.get, w.state, 2, 0, 0);
+    expect(fence[3] - fence[0]).toBeLessThan(0.5);
+    expect(targetBounds(w.get, w.state, 5, 5, 5)).toEqual([0, 0, 0, 1, 1, 1]);
+  });
+  it('stretches a fence towards the neighbours it joins', () => {
+    const w = world({ '0,0,0': id('oak_fence'), '1,0,0': id('oak_fence') });
+    expect(targetBounds(w.get, w.state, 0, 0, 0)[3]).toBe(1);
   });
 });

@@ -152,7 +152,13 @@ The agreed plan imports **all** library entries as playable content, in phases. 
    - **State on placement:** facing from the player's yaw; top half when placed against a ceiling or the upper half of a side. Doors are two blocks. Right-click opens doors, trapdoors and gates (Shift places against them instead).
    - **UI:** the creative catalogue has category chips and a search box. Pause → Settings → **Art: World / Library** switches the core blocks' look (blocks only so far).
    - **Debug:** `__game.debugShowcase('plants')` builds a category (or everything) in rows in front of you; `__game.debugGiveLibrary('oak')` fills the inventory.
-   - **Known gaps** (later phases or follow-ups): library blocks are creative-only (no recipes, not generated in terrain); beds are one block long; ladders aren't climbable; light-giving blocks are drawn bright but don't light their surroundings; workstations (chest, furnace...) have no function yet.
+   - **Revisions after the user's review:** the targeting outline now fits the block's shape (`targetBounds` in `chunkMesher.ts`). Beds are two blocks long (`partnerOffset` in `shapes.ts` also covers doors) and can be slept in, by day or by night: time passes to the next sunset or sunrise, and the bed becomes the respawn point. Water shares surface heights between neighbouring cells, so flows slope instead of stepping, and it is drawn front faces only (the surface is meshed both ways up).
+   - **Known gaps** (later phases or follow-ups): library blocks are creative-only (no recipes, not generated in terrain); ladders aren't climbable; light-giving blocks are drawn bright but don't light their surroundings; workstations have no function yet.
+   - **Requested by the user, not built yet:**
+     - **Storage blocks open a storage menu** (chests, barrels, shelves, and Pouches as items). This needs block entities (an inventory per block, saved with the world) and a container screen in `src/ui/screens.ts`.
+     - **Chests open together with the player inventory:** container slots above the player's grid, with Shift-click moving stacks between them.
+     - **Beehives and bee nests have no bees:** spawn bees around them once creatures arrive (Phase 5), and add honey harvesting.
+     - Not reproduced: in the user's screenshots, some grass near stairs looked see-through. Check again after the outline fix.
 3. Items: tools, armour, food (Energy bar), materials, recipes.
 4. Effects, potions and particles.
 5. Creatures and vehicles (render3d models move into `src/entities/models/`).

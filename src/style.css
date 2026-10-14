@@ -972,3 +972,22 @@ input[type='search'] {
     grid-template-columns: 1fr;
   }
 }
+
+/* Sleeping: the screen fades to ink and back. */
+.sleep-veil {
+  position: fixed;
+  inset: 0;
+  background: var(--ink);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.7s ease;
+  z-index: 50;
+}
+.sleep-veil.on {
+  opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sleep-veil {
+    transition: none;
+  }
+}

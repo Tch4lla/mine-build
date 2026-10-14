@@ -113,6 +113,18 @@ export function refreshBlockUVs(): void {
 }
 refreshBlockUVs();
 
+/** UVs of a named tile on every face (box tile overrides such as a bed's pillow). */
+const tileUVCache = new Map<string, { top: UV; side: UV; bottom: UV }>();
+function tileUVs(name: string): { top: UV; side: UV; bottom: UV } {
+  let t = tileUVCache.get(name);
+  if (!t) {
+    const uv = tileUV(tileIndex(name));
+    t = { top: uv, side: uv, bottom: uv };
+    tileUVCache.set(name, t);
+  }
+  return t;
+}
+
 /** Blocks drawn unshaded: the lamp, glowing ore and library blocks that give off light. */
 const FULL_BRIGHT = new Set(['lamp', 'crystal_ore']);
 const BRIGHT = new Uint8Array(MAX_BLOCK_ID + 1);
@@ -142,7 +154,7 @@ function connections(
 
 /** The boxes a non-cube block is drawn (or collides) with. */
 function blockShapeBoxes(
-  chunk: ChunkData,
+  stateAt: (x: number, y: number, z: number) => number,
   at: (x: number, y: number, z: number) => number,
   x: number,
   y: number,
@@ -155,12 +167,39 @@ function blockShapeBoxes(
   return shapeBoxes(
     {
       shape,
-      state: chunk.getState(x, y, z),
+      state: stateAt(x, y, z),
       conn: group ? connections(at, x, y, z, group) : 0,
       box: BLOCKS[id].box,
     },
     collision,
   );
+}
+
+/**
+ * The box (block space, [x0, y0, z0, x1, y1, z1]) that outlines a block when the player aims at
+ * it: the union of its drawn boxes, a slim upright box for plants and signs, the full cell for
+ * cubes.
+ */
+export function targetBounds(
+  getBlock: (x: number, y: number, z: number) => number,
+  getState: (x: number, y: number, z: number) => number,
+  x: number,
+  y: number,
+  z: number,
+): Box {
+  const id = getBlock(x, y, z);
+  const shape = SHAPE[id] ?? 'cube';
+  if (shape === 'cube') return [0, 0, 0, 1, 1, 1];
+  if (shape === 'cross' || shape === 'flat') return [0.15, 0, 0.15, 0.85, 0.9, 0.85];
+  const at = (dx: number, dy: number, dz: number) => getBlock(x + dx, y + dy, z + dz);
+  const st = (dx: number, dy: number, dz: number) => getState(x + dx, y + dy, z + dz);
+  const out: Box = [1, 1, 1, 0, 0, 0];
+  for (const { box: b } of blockShapeBoxes(st, at, 0, 0, 0, id, false))
+    for (let i = 0; i < 3; i++) {
+      out[i] = Math.min(out[i], b[i]);
+      out[i + 3] = Math.max(out[i + 3], Math.min(1, b[i + 3]));
+    }
+  return out[3] > out[0] ? out : [0, 0, 0, 1, 1, 1];
 }
 
 /**
@@ -263,6 +302,7 @@ export function meshChunk(chunk: ChunkData, sample: BlockSampler): { solid: Mesh
   }
   const at = (x: number, y: number, z: number): number => (y < 0 || y >= H ? 0 : pad[pi(x, y, z)]);
   const aoSolid = (x: number, y: number, z: number): number => (occludes(at(x, y, z)) ? 1 : 0);
+  const stateOf = (x: number, y: number, z: number): number => chunk.getState(x, y, z);
 
   for (let y = 0; y < H; y++) {
     for (let z = 0; z < S; z++) {
@@ -274,14 +314,26 @@ export function meshChunk(chunk: ChunkData, sample: BlockSampler): { solid: Mesh
           if (SHAPE[id] === 'cross') emitCross(solid, x, y, z, BLOCK_UVS[id].side, BRIGHT[id] ? 1 : 0.92);
           else if (SHAPE[id] === 'flat')
             emitFlat(solid, x, y, z, BLOCK_UVS[id].side, chunk.getState(x, y, z) & 1, BRIGHT[id] ? 1 : 0.92);
-          else emitBoxes(solid, x, y, z, id, blockShapeBoxes(chunk, at, x, y, z, id, false), at);
+          else emitBoxes(solid, x, y, z, id, blockShapeBoxes(stateOf, at, x, y, z, id, false), at);
           continue;
         }
         const out = r === 3 ? water : solid;
         const uvs = BLOCK_UVS[id];
         const strength = WATER_STRENGTH[id];
         const isWater = strength > 0;
-        const surface = isWater ? waterSurface(strength, WATER_STRENGTH[at(x, y + 1, z)] > 0) : 1;
+        // Water's top corners are shared with the neighbouring water cells, so flowing water forms
+        // one continuous slope instead of a staircase of separate boxes.
+        const corner = (cx: number, cz: number): number => {
+          let h = 0;
+          for (let dz = cz - 1; dz <= cz; dz++)
+            for (let dx = cx - 1; dx <= cx; dx++) {
+              const w = WATER_STRENGTH[at(x + dx, y, z + dz)];
+              if (!w) continue;
+              if (WATER_STRENGTH[at(x + dx, y + 1, z + dz)]) return 1;
+              h = Math.max(h, waterSurface(w, false));
+            }
+          return h;
+        };
 
         for (let f = 0; f < 6; f++) {
           const face = FACES[f];
@@ -294,8 +346,7 @@ export function meshChunk(chunk: ChunkData, sample: BlockSampler): { solid: Mesh
           const ao: number[] = [];
           for (let c = 0; c < 4; c++) {
             const [cx, cy, cz] = face.corners[c];
-            let py = y + cy;
-            if (cy === 1 && surface < 1) py -= 1 - surface;
+            const py = isWater && cy === 1 ? y + corner(cx, cz) : y + cy;
             out.pos.push(x + cx, py, z + cz);
             out.nor.push(nx, ny, nz);
             const [cu, cv] = CORNER_UV[c];
@@ -335,6 +386,9 @@ export function meshChunk(chunk: ChunkData, sample: BlockSampler): { solid: Mesh
           } else {
             out.idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
           }
+          // Water is drawn front faces only, so each face blends once; its surface also faces down,
+          // so it can be seen from underwater.
+          if (isWater && ny === 1) out.idx.push(base, base + 2, base + 1, base, base + 3, base + 2);
         }
       }
     }
@@ -352,9 +406,9 @@ function emitBoxes(
   boxes: ShapeBox[],
   at: (x: number, y: number, z: number) => number,
 ): void {
-  const uvs = BLOCK_UVS[id];
   const bright = BRIGHT[id] === 1;
-  for (const { box: b, vOffset = 0, vScale = 1 } of boxes) {
+  for (const { box: b, vOffset = 0, vScale = 1, tile } of boxes) {
+    const uvs = tile ? tileUVs(tile) : BLOCK_UVS[id];
     for (let f = 0; f < 6; f++) {
       const face = FACES[f];
       const [nx, ny, nz] = face.n;
@@ -442,12 +496,13 @@ export function shapeColliderBoxes(chunk: ChunkData, sample: BlockSampler): Floa
     if (x < 0 || x >= S || z < 0 || z >= S) return sample(x, y, z);
     return chunk.get(x, y, z);
   };
+  const stateOf = (x: number, y: number, z: number): number => chunk.getState(x, y, z);
   for (let y = 0; y < CHUNK_HEIGHT; y++)
     for (let z = 0; z < S; z++)
       for (let x = 0; x < S; x++) {
         const id = chunk.get(x, y, z);
         if (!IS_SOLID[id] || FULL_SOLID[id]) continue;
-        for (const { box: b } of blockShapeBoxes(chunk, at, x, y, z, id, true))
+        for (const { box: b } of blockShapeBoxes(stateOf, at, x, y, z, id, true))
           out.push(x + b[0], y + b[1], z + b[2], x + b[3], y + b[4], z + b[5]);
       }
   return new Float32Array(out);
