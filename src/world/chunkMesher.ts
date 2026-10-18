@@ -7,6 +7,7 @@ import type { LightSampler } from './light';
 import {
   connectGroup,
   doorHingeRight,
+  pairSide,
   facingOf,
   shapeBoxes,
   type BlockShape,
@@ -180,16 +181,16 @@ function blockShapeBoxes(
   const shape = SHAPE[id];
   const group = GROUP[id];
   const state = stateAt(x, y, z);
+  // Doors and chests pair up with a neighbour of their own kind facing the same way.
+  const facingAt = (dx: number, dz: number) =>
+    SHAPE[far(x + dx, y, z + dz)] === shape ? facingOf(stateAt(x + dx, y, z + dz)) : -1;
   return shapeBoxes(
     {
       shape,
       state,
       conn: group ? connections(at, x, y, z, group) : 0,
-      hingeRight:
-        shape === 'door' &&
-        doorHingeRight(state, (dx, dz) =>
-          SHAPE[far(x + dx, y, z + dz)] === 'door' ? facingOf(stateAt(x + dx, y, z + dz)) : -1,
-        ),
+      hingeRight: shape === 'door' && doorHingeRight(state, facingAt),
+      joined: shape === 'chest' ? pairSide(state, facingAt) : null,
       box: BLOCKS[id].box,
       edgeTile: BLOCKS[id].edgeOf !== undefined ? BLOCKS[BLOCKS[id].edgeOf!].tiles.side : undefined,
       frameTile: BLOCKS[id].edgeOf !== undefined ? BLOCKS[BLOCKS[id].edgeOf!].tiles.side : undefined,
@@ -508,12 +509,16 @@ function emitBoxes(
   at: (x: number, y: number, z: number) => number,
 ): void {
   const bright = BRIGHT[id] === 1;
-  for (const { box: b, vOffset = 0, vScale = 1, tile, edgeTile, flipU, shade = 1 } of boxes) {
+  for (const { box: b, vOffset = 0, vScale = 1, tile, edgeTile, flipU, shade = 1, stretch } of boxes) {
     const uvs = tile ? tileUVs(tile) : BLOCK_UVS[id];
     for (let f = 0; f < 6; f++) {
       const face = FACES[f];
       const [nx, ny, nz] = face.n;
-      if (onBoundary(f, b) && occludes(at(x + nx, y + ny, z + nz))) continue;
+      if (onBoundary(f, b)) {
+        const nb = at(x + nx, y + ny, z + nz);
+        // Only the halves of a double chest reach across to a chest beside them.
+        if (occludes(nb) || (nb === id && SHAPE[id] === 'chest')) continue;
+      }
       const edge = edgeTile !== undefined && narrowFace(f, b);
       const [u0, v0, u1, v1] = edge ? tileUVs(edgeTile).side : uvs[face.tile];
       const base = out.pos.length / 3;
@@ -523,7 +528,10 @@ function emitBoxes(
         const pz = cz ? b[5] : b[2];
         out.pos.push(x + px, y + py, z + pz);
         out.nor.push(nx, ny, nz);
-        const [fu, fv] = faceUV(f, px, py, pz);
+        // A stretched texture spans two blocks along its axis (a double chest).
+        const sx = stretch?.axis === 0 ? (px + stretch.shift) / 2 : px;
+        const sz = stretch?.axis === 2 ? (pz + stretch.shift) / 2 : pz;
+        const [fu, fv] = faceUV(f, sx, py, sz);
         const tu = flipU && !edge ? 1 - fu : fu;
         const tv = ny === 0 && !edge ? vOffset + fv * vScale : fv;
         out.uv.push(u0 + (u1 - u0) * tu, v0 + (v1 - v0) * tv);
@@ -660,4 +668,11 @@ export function exposedSolidVoxels(
     }
   }
   return new Int32Array(out);
+}
+
+/** Geometry of some boxes drawn as block `id` would draw them, at the origin (a chest's lid). */
+export function meshBoxes(id: number, boxes: ShapeBox[]): MeshData {
+  const out = new Builder();
+  emitBoxes(out, 0, 0, 0, id, boxes, () => 0);
+  return out.build();
 }

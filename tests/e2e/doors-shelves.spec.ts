@@ -17,9 +17,18 @@ async function placeAt(page: Page, x: number, y: number, z: number) {
     { x, y, z },
   );
   await page.waitForTimeout(300);
-  await page.evaluate(() => window.__game!.debugUseHeld());
-  // Placing has a short cooldown, in game time.
-  await page.waitForTimeout(700);
+  // Placing has a short cooldown in game time, which runs slowly in headless browsers: keep
+  // clicking until the block is there.
+  await page.waitForFunction(
+    ({ x, y, z }) => {
+      const g = window.__game!;
+      if (g.world.getBlock(x, y, z) !== 0) return true;
+      g.debugUseHeld();
+      return false;
+    },
+    { x, y, z },
+    { timeout: 15_000, polling: 250 },
+  );
 }
 
 async function newWorld(page: Page, name: string) {
@@ -154,7 +163,91 @@ test('a shelf is an open unit that shows what it holds', async ({ page }) => {
   }, p);
   await page.waitForTimeout(800);
   await shot(page, 'shelves');
-  const shown = await page.evaluate(() => window.__game!.shelves.group.children.length);
-  expect(shown).toBe(1);
+  await expect.poll(() => page.evaluate(() => window.__game!.shelves.group.children.length)).toBe(1);
+  expect(errors).toEqual([]);
+});
+
+test('two chests side by side open as one double chest, lids and all', async ({ page }) => {
+  const errors = await newWorld(page, 'Chests');
+  const p = await clearRoom(page);
+  await page.evaluate(() => {
+    const g = window.__game!;
+    g.inventory.slots[0] = { id: 'chest', count: 3 };
+    g.inventory.selected = 0;
+  });
+  for (const dx of [0, 1, -3]) await placeAt(page, p.x + dx, p.y, p.z - 3);
+  // Something already in the right-hand half shows after the left half's 27 slots.
+  await page.evaluate(({ x, y, z }) => {
+    const g = window.__game! as unknown as {
+      containers: Map<string, unknown[]>;
+      inventory: { slots: unknown[] };
+    };
+    g.inventory.slots[0] = null;
+    const right = new Array(27).fill(null);
+    right[0] = { id: 'stone_bricks', count: 5 };
+    g.containers.set(`${x + 1},${y},${z - 3}`, right);
+  }, p);
+
+  // Open it from the left half: one screen with 54 slots.
+  await page.evaluate(({ x, y, z }) => {
+    const g = window.__game!;
+    g.player.teleport(x + 0.5, y + 2.6, z - 2.5);
+    g.player.pitch = -Math.PI / 2 + 0.02;
+  }, p);
+  await page.waitForTimeout(300);
+  expect(await page.evaluate(() => window.__game!.debugOpenContainer())).toBe(true);
+  const grid = page.getByTestId('container-grid');
+  await expect(grid.locator('.slot')).toHaveCount(54);
+  await expect(grid.locator('.slot').nth(27)).toContainText('5');
+  await shot(page, 'chest-double-screen');
+
+  // Look at it from the front with the screen out of the way: both lids are up.
+  await page.evaluate(({ x, y, z }) => {
+    const g = window.__game!;
+    document.getElementById('screens')!.style.visibility = 'hidden';
+    g.player.teleport(x + 1, y - 0.3, z + 0.2);
+    g.player.yaw = 0;
+    g.player.pitch = -0.45;
+  }, p);
+  await page.waitForTimeout(800);
+  const open = await page.evaluate(({ x, y, z }) => {
+    const g = window.__game!;
+    return [
+      g.world.getBlockState(x, y, z - 3) & 8,
+      g.world.getBlockState(x + 1, y, z - 3) & 8,
+      g.world.getBlockState(x - 3, y, z - 3) & 8,
+    ];
+  }, p);
+  expect(open).toEqual([8, 8, 0]);
+  await shot(page, 'chest-double-open');
+
+  // Closing the screen lets the lids swing shut, and the halves keep their own slots.
+  await page.evaluate(() => {
+    window.__game!.screens.hide(false);
+    document.getElementById('screens')!.style.visibility = '';
+  });
+  // Headless browsers can't keep the pointer locked, which pauses the game; carry on regardless.
+  await page.waitForTimeout(300);
+  await page.evaluate(() => window.__game!.setPaused(false));
+  await page.waitForFunction(
+    ({ x, y, z }) => (window.__game!.world.getBlockState(x, y, z - 3) & 8) === 0,
+    p,
+    {
+      timeout: 15_000,
+    },
+  );
+  const after = await page.evaluate(({ x, y, z }) => {
+    const g = window.__game! as unknown as {
+      containers: Map<string, ({ id: string } | null)[]>;
+      world: { getBlockState(x: number, y: number, z: number): number };
+    };
+    return {
+      open: g.world.getBlockState(x, y, z - 3) & 8,
+      right: g.containers.get(`${x + 1},${y},${z - 3}`)![0]?.id,
+      left: g.containers.get(`${x},${y},${z - 3}`)!.length,
+    };
+  }, p);
+  expect(after).toEqual({ open: 0, right: 'stone_bricks', left: 27 });
+  await shot(page, 'chest-double-closed');
   expect(errors).toEqual([]);
 });

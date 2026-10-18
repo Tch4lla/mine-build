@@ -29,7 +29,9 @@ export type BlockShape =
   /** Half of a two-block bed: the foot, or the head (TOP bit) one block further in its facing. */
   | 'bed'
   /** An open shelf unit: a back panel and three compartments, open towards the player. */
-  | 'shelf';
+  | 'shelf'
+  /** A chest; two side by side facing the same way join into one wide chest. */
+  | 'chest';
 
 /** [x0, y0, z0, x1, y1, z1] in block space (0–1; collision boxes may reach 1.5 high). */
 export type Box = [number, number, number, number, number, number];
@@ -47,6 +49,11 @@ export interface ShapeBox {
   flipU?: boolean;
   /** Darken the box (a shelf's back, in the shade of its boards). */
   shade?: number;
+  /**
+   * Stretch the texture over two blocks along an axis (0 x, 2 z): a double chest's halves share
+   * one picture. `shift` is 0 for the half at the low end of the axis, 1 for the other.
+   */
+  stretch?: { axis: 0 | 2; shift: 0 | 1 };
 }
 
 export const FACING = 3;
@@ -109,6 +116,8 @@ export interface ShapeInput {
   doorTiles?: { upper: string; lower: string };
   /** Tile for a shelf's frame and boards (its wood's planks). */
   frameTile?: string | null;
+  /** Which side a chest is joined to the other half of a double chest on (see pairSide). */
+  joined?: 'left' | 'right' | null;
   /** A door hinged on its right (see doorHingeRight), so a pair opens from the middle. */
   hingeRight?: boolean;
 }
@@ -119,7 +128,7 @@ export interface ShapeInput {
  * player through their opening, and 'cross' shapes never collide.
  */
 export function shapeBoxes(
-  { shape, state, conn = 0, box, edgeTile, doorTiles, hingeRight = false, frameTile }: ShapeInput,
+  { shape, state, conn = 0, box, edgeTile, doorTiles, hingeRight = false, frameTile, joined }: ShapeInput,
   collision = false,
 ): ShapeBox[] {
   const f = facingOf(state);
@@ -229,10 +238,34 @@ export function shapeBoxes(
         out.push({ box: b, tile: frame });
       return out.map((b) => ({ ...b, box: rotateBox(b.box, f) }));
     }
+    case 'chest': {
+      // Open, the lid is drawn by the animated lid (chestLidBox) instead of the chunk.
+      const [x0, , z0, x1, , z1] = chestLidBox(joined);
+      const body = rotateBox([x0, 0, z0, x1, open && !collision ? CHEST_SEAM : px(14), z1], f);
+      return [{ box: body, stretch: joined ? chestStretch(body, f) : undefined }];
+    }
     case 'cross':
     case 'flat':
       return [];
   }
+}
+
+/** How a double chest's half (its box turned to face `f`) shares the pair's picture. */
+export function chestStretch(b: Box, f: number): ShapeBox['stretch'] {
+  const axis = f & 1 ? 2 : 0;
+  return { axis, shift: b[axis] === 0 ? 1 : 0 };
+}
+
+/** Height where a chest's lid meets its body. */
+export const CHEST_SEAM = px(9);
+
+/**
+ * A chest's lid, facing north in block space: from the seam to the top, reaching across to the
+ * other half of a double chest. It hinges on its back (north) bottom edge, at (y, z) =
+ * (CHEST_SEAM, 1/16).
+ */
+export function chestLidBox(joined?: 'left' | 'right' | null): Box {
+  return [joined === 'left' ? 0 : px(1), CHEST_SEAM, px(1), joined === 'right' ? 1 : px(15), px(14), px(15)];
 }
 
 /** Heights of a shelf's boards (bottom of each, 1/16 thick): three compartments, 4/16 tall each. */
@@ -265,16 +298,28 @@ export function partnerOffset(shape: BlockShape, state: number): [number, number
 
 /**
  * Whether a door hangs on its right-hand hinge (as seen by the player who placed it), so two doors
- * side by side open from the middle. Doors in a row facing the same way pair up from the left: the
- * first is left-hinged, the second right-hinged, the third left-hinged again, and so on.
- * `doorFacingAt(dx, dz)` gives the facing of a door at that horizontal offset, or -1 for none.
+ * side by side open from the middle: the right-hand door of a pair (see pairSide).
  */
 export function doorHingeRight(state: number, doorFacingAt: (dx: number, dz: number) => number): boolean {
+  return pairSide(state, doorFacingAt) === 'left';
+}
+
+/**
+ * Pairs blocks in a row facing the same way (double doors, double chests) from the left, as seen
+ * by the player who placed them: which side this one's partner is on, or null if it has none.
+ * `facingAt(dx, dz)` gives the facing of a block of the same kind at that offset, or -1.
+ */
+export function pairSide(
+  state: number,
+  facingAt: (dx: number, dz: number) => number,
+): 'left' | 'right' | null {
   const f = facingOf(state);
   const [lx, lz] = FACING_DIR[(f + 3) & 3];
   let n = 0;
-  while (n < 16 && doorFacingAt(lx * (n + 1), lz * (n + 1)) === f) n++;
-  return n % 2 === 1;
+  while (n < 16 && facingAt(lx * (n + 1), lz * (n + 1)) === f) n++;
+  if (n % 2 === 1) return 'left';
+  const [rx, rz] = FACING_DIR[(f + 1) & 3];
+  return facingAt(rx, rz) === f ? 'right' : null;
 }
 
 /** Shapes that join up with neighbours, and which neighbours they join. */

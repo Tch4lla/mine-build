@@ -30,6 +30,7 @@ import {
   OPEN,
   TOP,
   doorHingeRight,
+  pairSide,
   facingFromYaw,
   facingOf,
   partnerOffset,
@@ -50,6 +51,7 @@ import { Tether } from './build/tether';
 import { Mobs, type Mob } from './entities/mobs';
 import { DroppedItems } from './entities/droppedItems';
 import { ShelfDisplays } from './entities/shelfDisplays';
+import { ChestLids } from './entities/chestLids';
 import { FallingBlocks } from './entities/fallingBlocks';
 import { BlockUpdates } from './world/blockUpdates';
 import { Particles } from './effects/particles';
@@ -102,6 +104,9 @@ export class Game implements ScreenHost {
   readonly mobs: Mobs;
   readonly dropped: DroppedItems;
   readonly shelves: ShelfDisplays;
+  readonly chestLids: ChestLids;
+  /** Copies an open double chest's combined slots back to its two halves. */
+  private syncOpenChest: (() => void) | null = null;
   readonly falling: FallingBlocks;
   readonly blockUpdates: BlockUpdates;
   readonly photos = new PhotoEntities();
@@ -209,6 +214,7 @@ export class Game implements ScreenHost {
     this.mobs.spawningEnabled = settings.slimes;
     this.dropped = new DroppedItems(this.world);
     this.shelves = new ShelfDisplays(this.world);
+    this.chestLids = new ChestLids(this.world);
     this.falling = new FallingBlocks(this.world);
     this.blockUpdates = new BlockUpdates(this.world);
     this.scene.add(
@@ -218,6 +224,7 @@ export class Game implements ScreenHost {
       this.mobs.group,
       this.dropped.group,
       this.shelves.group,
+      this.chestLids.group,
       this.falling.group,
       this.photos.group,
       this.particles.mesh,
@@ -615,6 +622,8 @@ export class Game implements ScreenHost {
       this.mobs.sync();
       this.dropped.update(dt, this.time, this.player.position, (s) => this.inventory.add(s));
       this.shelves.update(this.containers);
+      this.chestLids.update(dt);
+      this.tidyChests();
       this.updateFires(dt);
       this.blockUpdates.step(dt);
       this.falling.update(dt);
@@ -1405,10 +1414,71 @@ export class Game implements ScreenHost {
   private openContainer(x: number, y: number, z: number): void {
     const b = BLOCKS[this.world.getBlock(x, y, z)];
     if (!b.storage) return;
-    const key = `${x},${y},${z}`;
-    let slots = this.containers.get(key);
-    if (!slots) this.containers.set(key, (slots = new Array(b.storage).fill(null)));
-    this.screens.show('container', { title: b.name, slots });
+    const slotsAt = (cx: number, cz: number) => {
+      const key = `${cx},${y},${cz}`;
+      let slots = this.containers.get(key);
+      if (!slots) this.containers.set(key, (slots = new Array(b.storage!).fill(null)));
+      return slots;
+    };
+    if (b.shape !== 'chest') {
+      this.screens.show('container', { title: b.name, slots: slotsAt(x, z) });
+      return;
+    }
+    // A double chest shows both halves as one, the left half's slots first.
+    const join = this.chestJoin(x, y, z);
+    const halves: [number, number, 'left' | 'right' | null][] = [[x, z, join]];
+    if (join) {
+      const [dx, dz] =
+        FACING_DIR[(facingOf(this.world.getBlockState(x, y, z)) + (join === 'left' ? 3 : 1)) & 3];
+      const other: [number, number, 'left' | 'right'] = [x + dx, z + dz, join === 'left' ? 'right' : 'left'];
+      if (join === 'left') halves.unshift(other);
+      else halves.push(other);
+    }
+    const parts = halves.map(([cx, cz]) => slotsAt(cx, cz));
+    const slots = parts.flat();
+    const sync = () => {
+      let i = 0;
+      for (const part of parts) for (let j = 0; j < part.length; j++) part[j] = slots[i++];
+    };
+    for (const [cx, cz, side] of halves) {
+      this.world.setBlock(cx, y, cz, b.id, this.world.getBlockState(cx, y, cz) | OPEN);
+      this.chestLids.open(cx, y, cz, side, () => {
+        // Shut: the chunk draws the lid again.
+        if (this.world.getBlock(cx, y, cz) === b.id)
+          this.world.setBlock(cx, y, cz, b.id, this.world.getBlockState(cx, y, cz) & ~OPEN);
+      });
+    }
+    this.world.flushDirtyNear(new THREE.Vector3(x, y, z));
+    this.syncOpenChest = sync;
+    this.screens.show('container', {
+      title: join ? `Double ${b.name}` : b.name,
+      slots,
+      onClose: () => {
+        sync();
+        this.syncOpenChest = null;
+        for (const [cx, cz] of halves) this.chestLids.close(cx, y, cz);
+      },
+    });
+  }
+
+  /** Which side a chest is joined to the other half of a double chest on, if it is. */
+  private chestJoin(x: number, y: number, z: number): 'left' | 'right' | null {
+    return pairSide(this.world.getBlockState(x, y, z), (dx, dz) =>
+      BLOCKS[this.world.getBlock(x + dx, y, z + dz)].shape === 'chest'
+        ? facingOf(this.world.getBlockState(x + dx, y, z + dz))
+        : -1,
+    );
+  }
+
+  /** Chests left open by a save (no lid of their own out) get their lid back. */
+  private tidyChests(): void {
+    for (const key of this.containers.keys()) {
+      const [x, y, z] = key.split(',').map(Number);
+      const id = this.world.getBlock(x, y, z);
+      const state = this.world.getBlockState(x, y, z);
+      if (BLOCKS[id].shape === 'chest' && state & OPEN && !this.chestLids.has(x, y, z))
+        this.world.setBlock(x, y, z, id, state & ~OPEN);
+    }
   }
 
   /** The other half of a two-block door or bed, if it is still there. */
@@ -1591,6 +1661,7 @@ export class Game implements ScreenHost {
     m.photoBlocks = this.photos.photoBlockList;
     m.dummies = this.mobs.serializeDummies();
     m.dropped = this.dropped.serialize();
+    this.syncOpenChest?.();
     m.containers = [...this.containers]
       .filter(([, slots]) => slots.some(Boolean))
       .map(([k, slots]) => ({ pos: k.split(',').map(Number), slots }));

@@ -6,7 +6,10 @@ import {
   CONNECT,
   OPEN,
   TOP,
+  CHEST_SEAM,
+  chestLidBox,
   doorHingeRight,
+  pairSide,
   facingFromYaw,
   partnerOffset,
   rotateBox,
@@ -214,6 +217,43 @@ describe('double doors', () => {
     // Lower halves (y = 1) first: the left door against x = 1, the right one against x = 3.
     expect(b.slice(0, 6)).toEqual([1, 1, 1, 1 + 3 / 16, 2, 2]);
     expect(b.slice(6, 12)).toEqual([2 + 13 / 16, 1, 1, 3, 2, 2]);
+  });
+});
+
+describe('chests', () => {
+  it('join a neighbour facing the same way into a double chest, two at a time', () => {
+    const row = (n: number, x: number) => (dx: number) => (x + dx >= 0 && x + dx < n ? 0 : -1);
+    expect([0, 1].map((x) => pairSide(0, row(2, x)))).toEqual(['right', 'left']);
+    // A third chest in the row stays single.
+    expect([0, 1, 2].map((x) => pairSide(0, row(3, x)))).toEqual(['right', 'left', null]);
+    expect(pairSide(0, () => -1)).toBeNull();
+  });
+
+  it('reach across to the other half, and leave the lid to the animation when open', () => {
+    const c = (state: number, joined: 'left' | 'right' | null) =>
+      shapeBoxes({ shape: 'chest', state, joined })[0].box;
+    expect(c(0, null)).toEqual([1 / 16, 0, 1 / 16, 15 / 16, 14 / 16, 15 / 16]);
+    expect(c(0, 'right')[3]).toBe(1);
+    expect(c(0, 'left')[0]).toBe(0);
+    expect(c(OPEN, null)[4]).toBe(CHEST_SEAM);
+    // It still collides as a whole chest while open.
+    expect(shapeBoxes({ shape: 'chest', state: OPEN }, true)[0].box[4]).toBe(14 / 16);
+    expect(chestLidBox('right')).toEqual([1 / 16, CHEST_SEAM, 1 / 16, 1, 14 / 16, 15 / 16]);
+  });
+
+  it('are registered as chests that hold 27 stacks', () => {
+    expect(blockByKey('chest')!.shape).toBe('chest');
+    expect(blockByKey('chest')!.storage).toBe(27);
+  });
+
+  it('mesh two chests side by side as one wide chest', () => {
+    const chunk = new ChunkData(0, 0);
+    chunk.set(1, 1, 1, id('chest'));
+    chunk.set(2, 1, 1, id('chest'));
+    const xs = Array.from(meshChunk(chunk, empty).solid.positions).filter((_, i) => i % 3 === 0);
+    expect(Math.min(...xs)).toBeCloseTo(1 + 1 / 16);
+    expect(Math.max(...xs)).toBeCloseTo(3 - 1 / 16);
+    expect(xs.some((x) => Math.abs(x - 2) < 1e-6)).toBe(true);
   });
 });
 

@@ -380,7 +380,7 @@ for (const b of [...LIB_BLOCKS].sort((a, c) => a.blockId - c.blockId)) {
     continue;
   }
   if (b.blockId !== defs.length) throw new Error(`Library block ${b.key} expected id ${defs.length}`);
-  const shape = libShape(b);
+  const shape = b.key === 'chest' ? 'chest' : libShape(b);
   const cube = shape === 'cube';
   def({
     key: b.key,

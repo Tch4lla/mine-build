@@ -37,7 +37,7 @@ export class World {
   constructor(
     readonly seed: number,
     private readonly physics: Physics,
-    private readonly solidMaterial: THREE.Material,
+    readonly solidMaterial: THREE.Material,
     private readonly waterMaterial: THREE.Material,
   ) {
     this.generator = new TerrainGenerator(seed);
@@ -330,7 +330,7 @@ export class World {
       }
   }
 
-  private toGeometry(m: MeshData): THREE.BufferGeometry {
+  toGeometry(m: MeshData): THREE.BufferGeometry {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(m.positions, 3));
     g.setAttribute('normal', new THREE.BufferAttribute(m.normals, 3));

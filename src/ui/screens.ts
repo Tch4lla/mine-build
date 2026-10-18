@@ -25,6 +25,8 @@ export type ScreenName = 'inventory' | 'workbench' | 'gallery' | 'help' | 'conta
 export interface Container {
   title: string;
   slots: (ItemStack | null)[];
+  /** Called when the screen closes (a chest's lid swings shut). */
+  onClose?: () => void;
 }
 
 abstract class Screen {
@@ -364,6 +366,7 @@ class InventoryScreen extends Screen {
     this.cursorEl.remove();
     this.tooltip.destroy();
     window.removeEventListener('mousemove', this.moveListener);
+    this.container?.onClose?.();
   }
 }
 
