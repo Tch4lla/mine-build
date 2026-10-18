@@ -47,6 +47,12 @@ export interface ShapeBox {
   edgeTile?: string;
   /** Mirror the picture left to right (the right-hand door of a pair). */
   flipU?: boolean;
+  /**
+   * The face (0 +x, 1 -x, 4 +z, 5 -z) the picture is drawn the right way round on. The face
+   * opposite shows it mirrored, as seen through the panel, so a door's handle is on the same edge
+   * from both sides.
+   */
+  frontFace?: number;
   /** Darken the box (a shelf's back, in the shade of its boards). */
   shade?: number;
   /**
@@ -90,6 +96,12 @@ export function rotateBox(b: Box, turns: number): Box {
 }
 
 const px = (n: number) => n / 16;
+
+/** The face index (0 +x, 1 -x, 4 +z, 5 -z) of a horizontal direction turned like rotateBox. */
+function turnedFace([dx, dz]: [number, number], turns: number): number {
+  for (let i = 0; i < (turns & 3); i++) [dx, dz] = [-dz, dx];
+  return dx > 0 ? 0 : dx < 0 ? 1 : dz > 0 ? 4 : 5;
+}
 
 /** Arms from the centre towards each connected side, for a post of half-width `hw`. */
 function arms(conn: number, hw: number, y0: number, y1: number): Box[] {
@@ -197,15 +209,20 @@ export function shapeBoxes(
         : [0, 0, px(13), 1, 1, 1];
       const picture = doorTiles ? (top ? doorTiles.upper : doorTiles.lower) : undefined;
       const flipU = hingeRight || undefined;
+      // The side facing the player who placed it: south when closed, turning with the panel as it
+      // swings open (to the east for a left hinge, the west for a right one).
+      const front: [number, number] = open ? (hingeRight ? [-1, 0] : [1, 0]) : [0, 1];
+      const frontFace = turnedFace(front, f);
       return [
         picture
-          ? { box: rotateBox(panel, f), tile: picture, edgeTile: edgeTile ?? undefined, flipU }
+          ? { box: rotateBox(panel, f), tile: picture, edgeTile: edgeTile ?? undefined, flipU, frontFace }
           : {
               box: rotateBox(panel, f),
               vOffset: top ? 0.5 : 0,
               vScale: 0.5,
               edgeTile: edgeTile ?? undefined,
               flipU,
+              frontFace,
             },
       ];
     }

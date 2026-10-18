@@ -207,6 +207,28 @@ describe('double doors', () => {
     expect(panel.flipU).toBe(true);
   });
 
+  it('show the picture through the panel, so the handle is on the same edge from both sides', () => {
+    expect(shapeBoxes({ shape: 'door', state: 0 })[0].frontFace).toBe(4);
+    expect(shapeBoxes({ shape: 'door', state: OPEN })[0].frontFace).toBe(0);
+    expect(shapeBoxes({ shape: 'door', state: OPEN, hingeRight: true })[0].frontFace).toBe(1);
+    // Placed looking east, the front faces west (back towards the player).
+    expect(shapeBoxes({ shape: 'door', state: 1 })[0].frontFace).toBe(1);
+    const c = new ChunkData(0, 0);
+    c.set(1, 1, 1, id('oak_door'));
+    const m = meshChunk(c, empty).solid;
+    // u at each x along the front (+z) and back (-z) faces: the same picture column at the same x.
+    const uAt = (nz: number) => {
+      const out = new Map<number, number>();
+      for (let i = 0; i < m.normals.length / 3; i++)
+        if (m.normals[i * 3 + 2] === nz) out.set(+m.positions[i * 3].toFixed(4), +m.uvs[i * 2].toFixed(5));
+      return out;
+    };
+    const front = uAt(1);
+    const back = uAt(-1);
+    expect(front.size).toBe(2);
+    for (const [x, u] of front) expect(back.get(x)).toBe(u);
+  });
+
   it('collide on the hinge side of each door in a pair', () => {
     const c = new ChunkData(0, 0);
     for (const x of [1, 2]) {

@@ -524,7 +524,17 @@ function emitBoxes(
   at: (x: number, y: number, z: number) => number,
 ): void {
   const bright = BRIGHT[id] === 1;
-  for (const { box: b, vOffset = 0, vScale = 1, tile, edgeTile, flipU, shade = 1, stretch } of boxes) {
+  for (const {
+    box: b,
+    vOffset = 0,
+    vScale = 1,
+    tile,
+    edgeTile,
+    flipU,
+    shade = 1,
+    stretch,
+    frontFace,
+  } of boxes) {
     const uvs = tile ? tileUVs(tile) : BLOCK_UVS[id];
     for (let f = 0; f < 6; f++) {
       const face = FACES[f];
@@ -546,7 +556,8 @@ function emitBoxes(
         // A stretched texture spans two blocks along its axis (a double chest).
         const sx = stretch?.axis === 0 ? (px + stretch.shift) / 2 : px;
         const sz = stretch?.axis === 2 ? (pz + stretch.shift) / 2 : pz;
-        const [fu, fv] = faceUV(f, sx, py, sz);
+        // The back of a picture shows it as seen through the panel (the front's own mapping).
+        const [fu, fv] = faceUV(frontFace !== undefined && f === (frontFace ^ 1) ? frontFace : f, sx, py, sz);
         const tu = flipU && !edge ? 1 - fu : fu;
         const tv = ny === 0 && !edge ? vOffset + fv * vScale : fv;
         out.uv.push(u0 + (u1 - u0) * tu, v0 + (v1 - v0) * tv);

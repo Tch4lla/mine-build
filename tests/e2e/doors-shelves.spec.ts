@@ -90,6 +90,15 @@ test('two doors side by side open from the middle, together', async ({ page }) =
   }, p);
   await page.waitForTimeout(600);
   await shot(page, 'doors-closed');
+  // From behind, the handles are still in the middle: each door shows its picture mirrored.
+  await page.evaluate(({ x, y, z }) => {
+    const g = window.__game!;
+    g.player.teleport(x + 1, y, z - 5.5);
+    g.player.yaw = Math.PI;
+    g.player.pitch = 0.15;
+  }, p);
+  await page.waitForTimeout(600);
+  await shot(page, 'doors-back');
 
   // Right-click the left door: both open, swinging away from each other.
   const opened = await page.evaluate(({ x, y, z }) => {
