@@ -5,6 +5,7 @@
 import { BLOCKS, FULL_SOLID, IS_SOLID, RENDER, WATER_STRENGTH } from './blocks';
 import type { LightSampler } from './light';
 import {
+  FACING_DIR,
   connectGroup,
   doorHingeRight,
   pairSide,
@@ -217,7 +218,21 @@ export function targetBoxes(
   if (shape === 'cross' || shape === 'flat') return [];
   const at = (dx: number, dy: number, dz: number) => getBlock(x + dx, y + dy, z + dz);
   const st = (dx: number, dy: number, dz: number) => getState(x + dx, y + dy, z + dz);
-  return blockShapeBoxes(st, at, 0, 0, 0, id, false).map((b) => b.box);
+  const own = blockShapeBoxes(st, at, 0, 0, 0, id, false).map((b) => b.box);
+  if (shape !== 'chest') return own;
+  // A double chest is outlined whole: one box around both halves.
+  const state = st(0, 0, 0);
+  const side = pairSide(state, (dx, dz) => (SHAPE[at(dx, 0, dz)] === 'chest' ? facingOf(st(dx, 0, dz)) : -1));
+  if (!side) return own;
+  const [dx, dz] = FACING_DIR[(facingOf(state) + (side === 'left' ? 3 : 1)) & 3];
+  const [p] = blockShapeBoxes(st, at, dx, 0, dz, id, false).map((b) => b.box);
+  const [o] = own;
+  const moved: Box = [p[0] + dx, p[1], p[2] + dz, p[3] + dx, p[4], p[5] + dz];
+  return [
+    [0, 1, 2]
+      .map((i) => Math.min(o[i], moved[i]))
+      .concat([3, 4, 5].map((i) => Math.max(o[i], moved[i]))) as Box,
+  ];
 }
 
 /**

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { BLOCKS, FULL_SOLID, IS_SOLID, blockByKey } from '../../src/world/blocks';
 import { ChunkData } from '../../src/world/chunk';
-import { meshChunk, shapeColliderBoxes, targetBounds } from '../../src/world/chunkMesher';
+import { meshChunk, shapeColliderBoxes, targetBounds, targetBoxes } from '../../src/world/chunkMesher';
 import {
   CONNECT,
   OPEN,
@@ -244,6 +244,21 @@ describe('chests', () => {
   it('are registered as chests that hold 27 stacks', () => {
     expect(blockByKey('chest')!.shape).toBe('chest');
     expect(blockByKey('chest')!.storage).toBe(27);
+  });
+
+  it('are outlined whole when doubled, from either half', () => {
+    const blocks: Record<string, number> = {
+      '0,0,0': id('chest'),
+      '1,0,0': id('chest'),
+      '5,0,0': id('chest'),
+    };
+    const get = (x: number, y: number, z: number) => blocks[`${x},${y},${z}`] ?? 0;
+    const state = () => 0;
+    const whole = [1 / 16, 0, 1 / 16, 2 - 1 / 16, 14 / 16, 15 / 16];
+    expect(targetBoxes(get, state, 0, 0, 0)).toEqual([whole]);
+    // From the right half the box reaches back over the left one.
+    expect(targetBoxes(get, state, 1, 0, 0)).toEqual([whole.map((v, i) => (i % 3 === 0 ? v - 1 : v))]);
+    expect(targetBoxes(get, state, 5, 0, 0)).toEqual([[1 / 16, 0, 1 / 16, 15 / 16, 14 / 16, 15 / 16]]);
   });
 
   it('mesh two chests side by side as one wide chest', () => {
