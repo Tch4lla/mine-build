@@ -27,7 +27,9 @@ export type BlockShape =
   /** One upright sprite quad across the block, turned to face the player: signs and banners. */
   | 'flat'
   /** Half of a two-block bed: the foot, or the head (TOP bit) one block further in its facing. */
-  | 'bed';
+  | 'bed'
+  /** An open shelf unit: a back panel and three compartments, open towards the player. */
+  | 'shelf';
 
 /** [x0, y0, z0, x1, y1, z1] in block space (0–1; collision boxes may reach 1.5 high). */
 export type Box = [number, number, number, number, number, number];
@@ -41,6 +43,10 @@ export interface ShapeBox {
   tile?: string;
   /** Tile for the box's narrow faces (a door's edges, top and bottom). */
   edgeTile?: string;
+  /** Mirror the picture left to right (the right-hand door of a pair). */
+  flipU?: boolean;
+  /** Darken the box (a shelf's back, in the shade of its boards). */
+  shade?: number;
 }
 
 export const FACING = 3;
@@ -101,6 +107,10 @@ export interface ShapeInput {
   edgeTile?: string | null;
   /** A door's picture, per half. */
   doorTiles?: { upper: string; lower: string };
+  /** Tile for a shelf's frame and boards (its wood's planks). */
+  frameTile?: string | null;
+  /** A door hinged on its right (see doorHingeRight), so a pair opens from the middle. */
+  hingeRight?: boolean;
 }
 
 /**
@@ -109,7 +119,7 @@ export interface ShapeInput {
  * player through their opening, and 'cross' shapes never collide.
  */
 export function shapeBoxes(
-  { shape, state, conn = 0, box, edgeTile, doorTiles }: ShapeInput,
+  { shape, state, conn = 0, box, edgeTile, doorTiles, hingeRight = false, frameTile }: ShapeInput,
   collision = false,
 ): ShapeBox[] {
   const f = facingOf(state);
@@ -169,17 +179,24 @@ export function shapeBoxes(
     case 'door': {
       // Facing north (placed by a player looking north): closed, the panel sits on the side
       // nearest the player, flush with a wall face; open, it swings away from them against the
-      // west side, hinged at the south-west corner. Its thin faces use the door's material.
-      const panel: Box = open ? [0, 0, 0, px(3), 1, 1] : [0, 0, px(13), 1, 1, 1];
+      // west side, hinged at the south-west corner. A right-hinged door is the mirror image: it
+      // swings against the east side. Its thin faces use the door's material.
+      const panel: Box = open
+        ? hingeRight
+          ? [px(13), 0, 0, 1, 1, 1]
+          : [0, 0, 0, px(3), 1, 1]
+        : [0, 0, px(13), 1, 1, 1];
       const picture = doorTiles ? (top ? doorTiles.upper : doorTiles.lower) : undefined;
+      const flipU = hingeRight || undefined;
       return [
         picture
-          ? { box: rotateBox(panel, f), tile: picture, edgeTile: edgeTile ?? undefined }
+          ? { box: rotateBox(panel, f), tile: picture, edgeTile: edgeTile ?? undefined, flipU }
           : {
               box: rotateBox(panel, f),
               vOffset: top ? 0.5 : 0,
               vScale: 0.5,
               edgeTile: edgeTile ?? undefined,
+              flipU,
             },
       ];
     }
@@ -199,10 +216,36 @@ export function shapeBoxes(
       if (collision) return [{ box: rotateBox([0, 0, 0, 1, px(9), 1], f) }];
       return out.map((b) => ({ ...b, box: rotateBox(b.box, f) }));
     }
+    case 'shelf': {
+      if (collision) return wrap([[0, 0, 0, 1, 1, 1]]);
+      // Facing north: the back panel against the far (north) side, open towards the player.
+      const frame = frameTile ?? undefined;
+      const out: ShapeBox[] = [{ box: [px(1), 0, 0, px(15), 1, px(1.5)], shade: 0.6 }];
+      for (const b of [
+        [0, 0, 0, px(1), 1, 1],
+        [px(15), 0, 0, 1, 1, 1],
+        ...SHELF_BOARDS.map((y): Box => [px(1), y, px(1.5), px(15), y + px(1), 1]),
+      ] as Box[])
+        out.push({ box: b, tile: frame });
+      return out.map((b) => ({ ...b, box: rotateBox(b.box, f) }));
+    }
     case 'cross':
     case 'flat':
       return [];
   }
+}
+
+/** Heights of a shelf's boards (bottom of each, 1/16 thick): three compartments, 4/16 tall each. */
+export const SHELF_BOARDS = [0, px(5), px(10), px(15)];
+
+/**
+ * Where a shelf shows the item in each of its 9 slots, facing north in block space: three to a
+ * compartment, top compartment first, standing on its board and towards the open front.
+ */
+export function shelfSlotSpot(slot: number): [number, number, number] {
+  const row = Math.floor(slot / 3);
+  const col = slot % 3;
+  return [0.22 + col * 0.28, SHELF_BOARDS[2 - row] + px(1), 0.58];
 }
 
 /**
@@ -218,6 +261,20 @@ export function partnerOffset(shape: BlockShape, state: number): [number, number
     return top ? [0 - dx, 0, 0 - dz] : [dx, 0, dz];
   }
   return null;
+}
+
+/**
+ * Whether a door hangs on its right-hand hinge (as seen by the player who placed it), so two doors
+ * side by side open from the middle. Doors in a row facing the same way pair up from the left: the
+ * first is left-hinged, the second right-hinged, the third left-hinged again, and so on.
+ * `doorFacingAt(dx, dz)` gives the facing of a door at that horizontal offset, or -1 for none.
+ */
+export function doorHingeRight(state: number, doorFacingAt: (dx: number, dz: number) => number): boolean {
+  const f = facingOf(state);
+  const [lx, lz] = FACING_DIR[(f + 3) & 3];
+  let n = 0;
+  while (n < 16 && doorFacingAt(lx * (n + 1), lz * (n + 1)) === f) n++;
+  return n % 2 === 1;
 }
 
 /** Shapes that join up with neighbours, and which neighbours they join. */

@@ -79,6 +79,12 @@ const WHEEL_RADIUS = 0.45;
 const SUSPENSION_REST = 0.25;
 export const MAX_PARTS = 160;
 const MAX_CAR_SPEED = 9;
+const MAX_ROCKET_SPEED = 24;
+/** Balloon lift fades to nothing over the last BALLOON_THIN_AIR blocks below BALLOON_CEILING. */
+const BALLOON_CEILING = 116;
+const BALLOON_THIN_AIR = 36;
+/** Height at which a balloon with nothing tied to it bursts. */
+const BALLOON_POP_Y = 100;
 
 export class ContraptionManager {
   readonly group = new THREE.Group();
@@ -86,6 +92,8 @@ export class ContraptionManager {
   private readonly byCollider = new Map<number, { c: Contraption; p: PartInstance }>();
   /** Called when a spring fires (so the game can launch a player standing on it). */
   onSpring: (pos: THREE.Vector3, up: THREE.Vector3) => void = () => undefined;
+  /** A loose balloon burst high in the sky. */
+  onPop: (pos: THREE.Vector3) => void = () => undefined;
   maxLights = 6;
 
   constructor(private readonly physics: Physics) {
@@ -302,6 +310,7 @@ export class ContraptionManager {
 
   step(dt: number, drive: DriveInput | null, driven: Contraption | null): void {
     let lights = 0;
+    const popped = new Map<Contraption, PartInstance>();
     for (const c of this.list) {
       const body = c.body;
       if (!body.isEnabled()) continue;
@@ -334,8 +343,13 @@ export class ContraptionManager {
             break;
           case 'rocket':
             if (p.active) {
-              const dir = new THREE.Vector3(0, 1, 0).applyQuaternion(wq).multiplyScalar(420 * dt);
-              body.applyImpulseAtPoint(dir, at, true);
+              // Thrust fades towards the top speed, so a rocket arcs back down within sight
+              // instead of leaving the world.
+              const dir = new THREE.Vector3(0, 1, 0).applyQuaternion(wq);
+              const lv = body.linvel();
+              const along = dir.x * lv.x + dir.y * lv.y + dir.z * lv.z;
+              const power = THREE.MathUtils.clamp(1 - along / MAX_ROCKET_SPEED, 0, 1);
+              body.applyImpulseAtPoint(dir.multiplyScalar(420 * power * dt), at, true);
               p.timer -= dt;
               if (p.timer <= 0) {
                 p.active = false;
@@ -343,9 +357,14 @@ export class ContraptionManager {
               }
             } else if (p.timer < 0) p.timer = Math.min(0, p.timer + dt);
             break;
-          case 'balloon':
-            body.applyImpulseAtPoint({ x: 0, y: 9.81 * 7.5 * dt, z: 0 }, at, true);
+          case 'balloon': {
+            // Lift thins out high up, so a balloon build levels off instead of rising for ever.
+            const lift = THREE.MathUtils.clamp((BALLOON_CEILING - wp.y) / BALLOON_THIN_AIR, 0, 1);
+            body.applyImpulseAtPoint({ x: 0, y: 9.81 * 7.5 * lift * dt, z: 0 }, at, true);
+            // Balloons that got away with nothing tied on burst up there and come down.
+            if (wp.y > BALLOON_POP_Y && c.parts.every((q) => q.def.behavior === 'balloon')) popped.set(c, p);
             break;
+          }
           case 'spring':
             if (p.timer > 0) p.timer = Math.max(0, p.timer - dt);
             break;
@@ -392,6 +411,10 @@ export class ContraptionManager {
           true,
         );
       }
+    }
+    for (const [c, p] of popped) {
+      this.onPop(c.worldTransformOf(p).pos);
+      this.removePart(c, p);
     }
   }
 
@@ -457,10 +480,15 @@ export class ContraptionManager {
     }
   }
 
-  /** Disables bodies far from the player so they don't fall through unloaded terrain. */
+  /**
+   * Disables bodies far from the player so they don't fall through unloaded terrain. Only the
+   * horizontal distance counts: terrain colliders are whole columns, so a rocket high overhead keeps
+   * flying (and falls back down) instead of freezing in the sky.
+   */
   updateActivity(center: THREE.Vector3, radius: number): void {
     for (const c of this.list) {
-      const near = c.position.distanceTo(center) < radius;
+      const p = c.position;
+      const near = Math.hypot(p.x - center.x, p.z - center.z) < radius;
       if (near !== c.body.isEnabled()) c.body.setEnabled(near);
     }
   }

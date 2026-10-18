@@ -134,4 +134,39 @@ describe('contraptions', () => {
     run(physics, mgr, 1.5);
     expect(r.position.y).toBeGreaterThan(5);
   });
+
+  it('a rocket comes back down after its burn, even far above the player', () => {
+    const physics = new Physics();
+    flatGround(physics);
+    const mgr = new ContraptionManager(physics);
+    const r = mgr.spawn('rocket', new THREE.Vector3(0, 1.5, 0));
+    mgr.activate(r, r.parts[0]);
+    let top = 0;
+    for (let t = 0; t < 12; t += 0.5) {
+      // The player stands at the launch pad the whole time.
+      mgr.updateActivity(new THREE.Vector3(0, 1, 0), 30);
+      run(physics, mgr, 0.5);
+      top = Math.max(top, r.position.y);
+    }
+    expect(top).toBeGreaterThan(30);
+    expect(top).toBeLessThan(120);
+    expect(r.position.y).toBeLessThan(3);
+  });
+
+  it('a lone balloon bursts high up, and a loaded one levels off', () => {
+    const physics = new Physics();
+    const mgr = new ContraptionManager(physics);
+    let pops = 0;
+    mgr.onPop = () => pops++;
+    mgr.spawn('balloon', new THREE.Vector3(0, 70, 0));
+    const board = mgr.spawn('board', new THREE.Vector3(20, 70, 0));
+    mgr.merge(mgr.spawn('balloon', new THREE.Vector3(19.4, 70.7, 0)), board);
+    mgr.merge(mgr.spawn('balloon', new THREE.Vector3(20.6, 70.7, 0)), board);
+    run(physics, mgr, 60);
+    expect(pops).toBe(1);
+    expect(mgr.list).toHaveLength(1);
+    expect(board.position.y).toBeGreaterThan(80);
+    expect(board.position.y).toBeLessThan(116);
+    expect(Math.abs(board.body.linvel().y)).toBeLessThan(0.5);
+  });
 });

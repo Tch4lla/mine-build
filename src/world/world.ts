@@ -214,7 +214,7 @@ export class World {
     return -1;
   }
 
-  private sampler(cx: number, cz: number) {
+  private sampler(cx: number, cz: number, state = false) {
     return (x: number, y: number, z: number): number => {
       let ncx = cx;
       let ncz = cz;
@@ -224,7 +224,9 @@ export class World {
       else if (z >= CHUNK_SIZE) ncz++;
       const n = this.chunks.get(chunkKey(ncx, ncz));
       if (!n) return AIR;
-      return n.data.get(x - (ncx - cx) * CHUNK_SIZE, y, z - (ncz - cz) * CHUNK_SIZE);
+      const lx = x - (ncx - cx) * CHUNK_SIZE;
+      const lz = z - (ncz - cz) * CHUNK_SIZE;
+      return state ? n.data.getState(lx, y, lz) : n.data.get(lx, y, lz);
     };
   }
 
@@ -341,7 +343,12 @@ export class World {
   }
 
   private remesh(e: ChunkEntry): void {
-    const { solid, water } = meshChunk(e.data, this.sampler(e.data.cx, e.data.cz), this.lightFor(e));
+    const { solid, water } = meshChunk(
+      e.data,
+      this.sampler(e.data.cx, e.data.cz),
+      this.lightFor(e),
+      this.sampler(e.data.cx, e.data.cz, true),
+    );
     const place = (old: THREE.Mesh | undefined, m: MeshData, mat: THREE.Material, order: number) => {
       if (old) {
         old.geometry.dispose();
@@ -371,7 +378,7 @@ export class World {
   private rebuildCollider(e: ChunkEntry): void {
     this.removeColliders(e);
     const sample = this.sampler(e.data.cx, e.data.cz);
-    const boxes = shapeColliderBoxes(e.data, sample);
+    const boxes = shapeColliderBoxes(e.data, sample, this.sampler(e.data.cx, e.data.cz, true));
     if (boxes.length > 0) {
       const desc = RAPIER.ColliderDesc.trimesh(...boxesToTrimesh(boxes))
         .setTranslation(e.data.cx * CHUNK_SIZE, 0, e.data.cz * CHUNK_SIZE)

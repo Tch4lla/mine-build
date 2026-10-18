@@ -6,6 +6,7 @@ import {
   CONNECT,
   OPEN,
   TOP,
+  doorHingeRight,
   facingFromYaw,
   partnerOffset,
   rotateBox,
@@ -184,6 +185,51 @@ describe('doors', () => {
       if (u >= eu0 - 1e-6 && u <= eu1 + 1e-6 && v >= ev0 - 1e-6 && v <= ev1 + 1e-6) edgeVerts++;
     }
     expect(edgeVerts).toBe(4 * 4); // two sides, top and bottom
+  });
+});
+
+describe('double doors', () => {
+  it('pair up from the left so each pair opens from the middle', () => {
+    // A row of doors facing north at x = 0, 1, 2; the left of a north-facing door is -x.
+    const row = (n: number) => (x: number) => (dx: number) => (x + dx >= 0 && x + dx < n ? 0 : -1);
+    const three = row(3);
+    expect([0, 1, 2].map((x) => doorHingeRight(0, (dx) => three(x)(dx)))).toEqual([false, true, false]);
+    // A door facing another way beside it doesn't pair.
+    expect(doorHingeRight(0, (dx) => (dx === -1 ? 2 : -1))).toBe(false);
+  });
+
+  it('hinge the right-hand door on its right, mirroring its picture', () => {
+    const [panel] = shapeBoxes({ shape: 'door', state: OPEN, hingeRight: true });
+    expect(panel.box).toEqual([13 / 16, 0, 0, 1, 1, 1]);
+    expect(panel.flipU).toBe(true);
+  });
+
+  it('collide on the hinge side of each door in a pair', () => {
+    const c = new ChunkData(0, 0);
+    for (const x of [1, 2]) {
+      c.set(x, 1, 1, id('oak_door'), OPEN);
+      c.set(x, 2, 1, id('oak_door'), OPEN | TOP);
+    }
+    const b = Array.from(shapeColliderBoxes(c, (x, y, z) => c.get(x, y, z)));
+    // Lower halves (y = 1) first: the left door against x = 1, the right one against x = 3.
+    expect(b.slice(0, 6)).toEqual([1, 1, 1, 1 + 3 / 16, 2, 2]);
+    expect(b.slice(6, 12)).toEqual([2 + 13 / 16, 1, 1, 3, 2, 2]);
+  });
+});
+
+describe('shelves', () => {
+  it('are open shelf units framed in their wood, not a thin panel', () => {
+    const shelf = blockByKey('oak_shelf')!;
+    expect(shelf.shape).toBe('shelf');
+    expect(shelf.storage).toBe(9);
+    expect(shelf.edgeOf).toBe(blockByKey('planks')!.id);
+    const boxes = shapeBoxes({ shape: 'shelf', state: 0, frameTile: 'planks' });
+    // Back panel, two sides and four boards; everything but the back is drawn in planks.
+    expect(boxes).toHaveLength(7);
+    expect(boxes.filter((b) => b.tile === 'planks')).toHaveLength(6);
+    // Facing north the back is against the north side, so the open front faces the player.
+    expect(boxes[0].box[2]).toBe(0);
+    expect(boxes[0].box[5]).toBeLessThan(0.2);
   });
 });
 

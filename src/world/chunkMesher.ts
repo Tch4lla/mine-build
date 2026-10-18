@@ -4,7 +4,15 @@
  */
 import { BLOCKS, FULL_SOLID, IS_SOLID, RENDER, WATER_STRENGTH } from './blocks';
 import type { LightSampler } from './light';
-import { connectGroup, shapeBoxes, type BlockShape, type Box, type ShapeBox } from './shapes';
+import {
+  connectGroup,
+  doorHingeRight,
+  facingOf,
+  shapeBoxes,
+  type BlockShape,
+  type Box,
+  type ShapeBox,
+} from './shapes';
 import { CHUNK_HEIGHT, CHUNK_SIZE, ChunkData, MAX_BLOCK_ID } from './chunk';
 import { tileIndex, tileUV } from './tiles';
 
@@ -20,6 +28,8 @@ export interface MeshData {
 
 /** Returns the block id at chunk-local coords; x/z may be -1..CHUNK_SIZE (neighbour chunks). */
 export type BlockSampler = (x: number, y: number, z: number) => number;
+/** Like BlockSampler, for state bits; x/z may reach a little further into neighbour chunks. */
+export type StateSampler = (x: number, y: number, z: number) => number;
 
 interface FaceDef {
   n: [number, number, number];
@@ -164,16 +174,25 @@ function blockShapeBoxes(
   z: number,
   id: number,
   collision: boolean,
+  /** Block ids further away than `at` reaches (a row of doors), defaulting to `at`. */
+  far: (x: number, y: number, z: number) => number = at,
 ): ShapeBox[] {
   const shape = SHAPE[id];
   const group = GROUP[id];
+  const state = stateAt(x, y, z);
   return shapeBoxes(
     {
       shape,
-      state: stateAt(x, y, z),
+      state,
       conn: group ? connections(at, x, y, z, group) : 0,
+      hingeRight:
+        shape === 'door' &&
+        doorHingeRight(state, (dx, dz) =>
+          SHAPE[far(x + dx, y, z + dz)] === 'door' ? facingOf(stateAt(x + dx, y, z + dz)) : -1,
+        ),
       box: BLOCKS[id].box,
       edgeTile: BLOCKS[id].edgeOf !== undefined ? BLOCKS[BLOCKS[id].edgeOf!].tiles.side : undefined,
+      frameTile: BLOCKS[id].edgeOf !== undefined ? BLOCKS[BLOCKS[id].edgeOf!].tiles.side : undefined,
       doorTiles: BLOCKS[id].doorTiles,
     },
     collision,
@@ -324,6 +343,7 @@ export function meshChunk(
   chunk: ChunkData,
   sample: BlockSampler,
   lightAt?: LightSampler,
+  sampleState?: StateSampler,
 ): { solid: MeshData; water: MeshData } {
   const solid = new Builder();
   const water = new Builder();
@@ -344,7 +364,9 @@ export function meshChunk(
   }
   const at = (x: number, y: number, z: number): number => (y < 0 || y >= H ? 0 : pad[pi(x, y, z)]);
   const aoSolid = (x: number, y: number, z: number): number => (occludes(at(x, y, z)) ? 1 : 0);
-  const stateOf = (x: number, y: number, z: number): number => chunk.getState(x, y, z);
+  const stateOf = stateReader(chunk, sampleState);
+  const far = (x: number, y: number, z: number): number =>
+    x < -1 || x > S || z < -1 || z > S ? sample(x, y, z) : at(x, y, z);
 
   for (let y = 0; y < H; y++) {
     for (let z = 0; z < S; z++) {
@@ -357,7 +379,7 @@ export function meshChunk(
           if (SHAPE[id] === 'cross') emitCross(solid, x, y, z, BLOCK_UVS[id].side, BRIGHT[id] ? 1 : 0.92);
           else if (SHAPE[id] === 'flat')
             emitFlat(solid, x, y, z, BLOCK_UVS[id].side, chunk.getState(x, y, z) & 1, BRIGHT[id] ? 1 : 0.92);
-          else emitBoxes(solid, x, y, z, id, blockShapeBoxes(stateOf, at, x, y, z, id, false), at);
+          else emitBoxes(solid, x, y, z, id, blockShapeBoxes(stateOf, at, x, y, z, id, false, far), at);
           continue;
         }
         const out = r === 3 ? water : solid;
@@ -486,7 +508,7 @@ function emitBoxes(
   at: (x: number, y: number, z: number) => number,
 ): void {
   const bright = BRIGHT[id] === 1;
-  for (const { box: b, vOffset = 0, vScale = 1, tile, edgeTile } of boxes) {
+  for (const { box: b, vOffset = 0, vScale = 1, tile, edgeTile, flipU, shade = 1 } of boxes) {
     const uvs = tile ? tileUVs(tile) : BLOCK_UVS[id];
     for (let f = 0; f < 6; f++) {
       const face = FACES[f];
@@ -501,10 +523,11 @@ function emitBoxes(
         const pz = cz ? b[5] : b[2];
         out.pos.push(x + px, y + py, z + pz);
         out.nor.push(nx, ny, nz);
-        const [tu, fv] = faceUV(f, px, py, pz);
+        const [fu, fv] = faceUV(f, px, py, pz);
+        const tu = flipU && !edge ? 1 - fu : fu;
         const tv = ny === 0 && !edge ? vOffset + fv * vScale : fv;
         out.uv.push(u0 + (u1 - u0) * tu, v0 + (v1 - v0) * tv);
-        const c = bright ? 1 : face.shade;
+        const c = bright ? 1 : face.shade * shade;
         out.col.push(c, c, c);
         out.li.push(out.light);
       }
@@ -566,11 +589,23 @@ function emitQuads(
   }
 }
 
+/** State bits at chunk-local coords, reaching into neighbour chunks through `sampleState`. */
+function stateReader(chunk: ChunkData, sampleState?: StateSampler) {
+  return (x: number, y: number, z: number): number =>
+    x >= 0 && x < CHUNK_SIZE && z >= 0 && z < CHUNK_SIZE
+      ? chunk.getState(x, y, z)
+      : (sampleState?.(x, y, z) ?? 0);
+}
+
 /**
  * Collision boxes (chunk-local, [x0, y0, z0, x1, y1, z1] per box) of solid blocks that aren't
  * full cubes: slabs, stairs, fences, doors... Full cubes collide through exposedSolidVoxels.
  */
-export function shapeColliderBoxes(chunk: ChunkData, sample: BlockSampler): Float32Array {
+export function shapeColliderBoxes(
+  chunk: ChunkData,
+  sample: BlockSampler,
+  sampleState?: StateSampler,
+): Float32Array {
   const out: number[] = [];
   const S = CHUNK_SIZE;
   const at = (x: number, y: number, z: number): number => {
@@ -578,7 +613,7 @@ export function shapeColliderBoxes(chunk: ChunkData, sample: BlockSampler): Floa
     if (x < 0 || x >= S || z < 0 || z >= S) return sample(x, y, z);
     return chunk.get(x, y, z);
   };
-  const stateOf = (x: number, y: number, z: number): number => chunk.getState(x, y, z);
+  const stateOf = stateReader(chunk, sampleState);
   for (let y = 0; y < CHUNK_HEIGHT; y++)
     for (let z = 0; z < S; z++)
       for (let x = 0; x < S; x++) {

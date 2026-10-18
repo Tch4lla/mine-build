@@ -25,7 +25,16 @@ import { ATLAS_COLS, TILE_PX, tileIndex } from './world/tiles';
 import { refreshBlockUVs, targetBoxes } from './world/chunkMesher';
 import { outlineGeometry } from './view/outline';
 import { clearIconCache } from './items/icons';
-import { OPEN, TOP, facingFromYaw, partnerOffset, type BlockShape } from './world/shapes';
+import {
+  FACING_DIR,
+  OPEN,
+  TOP,
+  doorHingeRight,
+  facingFromYaw,
+  facingOf,
+  partnerOffset,
+  type BlockShape,
+} from './world/shapes';
 import { Player } from './player/player';
 import { Inventory, HOTBAR_SIZE, type ItemStack } from './items/inventory';
 import { item } from './items/items';
@@ -40,6 +49,7 @@ import { PARTS, partByItem, partRadius } from './build/parts';
 import { Tether } from './build/tether';
 import { Mobs, type Mob } from './entities/mobs';
 import { DroppedItems } from './entities/droppedItems';
+import { ShelfDisplays } from './entities/shelfDisplays';
 import { FallingBlocks } from './entities/fallingBlocks';
 import { BlockUpdates } from './world/blockUpdates';
 import { Particles } from './effects/particles';
@@ -91,6 +101,7 @@ export class Game implements ScreenHost {
   readonly tether: Tether;
   readonly mobs: Mobs;
   readonly dropped: DroppedItems;
+  readonly shelves: ShelfDisplays;
   readonly falling: FallingBlocks;
   readonly blockUpdates: BlockUpdates;
   readonly photos = new PhotoEntities();
@@ -197,6 +208,7 @@ export class Game implements ScreenHost {
     this.mobs = new Mobs(this.physics, this.world);
     this.mobs.spawningEnabled = settings.slimes;
     this.dropped = new DroppedItems(this.world);
+    this.shelves = new ShelfDisplays(this.world);
     this.falling = new FallingBlocks(this.world);
     this.blockUpdates = new BlockUpdates(this.world);
     this.scene.add(
@@ -205,6 +217,7 @@ export class Game implements ScreenHost {
       this.tether.beam,
       this.mobs.group,
       this.dropped.group,
+      this.shelves.group,
       this.falling.group,
       this.photos.group,
       this.particles.mesh,
@@ -286,6 +299,7 @@ export class Game implements ScreenHost {
       if (!this.player.seated && feet.distanceTo(pos) < 1.4 && feet.y > pos.y - 0.2)
         this.player.launch(up.clone().multiplyScalar(16));
     };
+    this.contraptions.onPop = (pos) => this.particles.burst(pos, 0xff6fa8, 14, { speed: 4 });
     // Water flow and falling sand react to every block change.
     this.blockUpdates.onFall = (x, y, z, id) => this.falling.spawn(x, y, z, id);
     this.falling.onBlocked = (id, pos) => this.dropped.drop({ id: BLOCKS[id].key, count: 1 }, pos);
@@ -600,6 +614,7 @@ export class Game implements ScreenHost {
       );
       this.mobs.sync();
       this.dropped.update(dt, this.time, this.player.position, (s) => this.inventory.add(s));
+      this.shelves.update(this.containers);
       this.updateFires(dt);
       this.blockUpdates.step(dt);
       this.falling.update(dt);
@@ -1349,15 +1364,41 @@ export class Game implements ScreenHost {
     }
   }
 
-  /** Opens or closes a door (both halves), trapdoor or gate. */
+  /** Opens or closes a door (both halves, and the other door of a pair), trapdoor or gate. */
   private toggleOpen(x: number, y: number, z: number): void {
-    const id = this.world.getBlock(x, y, z);
-    const partner = this.partnerOf(x, y, z);
     const state = this.world.getBlockState(x, y, z) ^ OPEN;
-    this.world.setBlock(x, y, z, id, state);
-    if (partner) this.world.setBlock(partner[0], partner[1], partner[2], id, state ^ TOP);
+    const open = state & OPEN;
+    const pair = this.doorPairOf(x, y, z);
+    for (const [dx, dz] of pair ? [[0, 0], pair] : [[0, 0]]) {
+      const [cx, cz] = [x + dx, z + dz];
+      const id = this.world.getBlock(cx, y, cz);
+      const st = (this.world.getBlockState(cx, y, cz) & ~OPEN) | open;
+      const partner = this.partnerOf(cx, y, cz);
+      this.world.setBlock(cx, y, cz, id, st);
+      if (partner) this.world.setBlock(partner[0], partner[1], partner[2], id, st ^ TOP);
+    }
     this.world.flushDirtyNear(new THREE.Vector3(x, y, z));
     this.viewmodel.doSwing();
+  }
+
+  /**
+   * The other door of a double door (as a horizontal offset): the door beside this one, on the side
+   * away from its hinge, facing the same way and hinged the other way.
+   */
+  private doorPairOf(x: number, y: number, z: number): [number, number] | null {
+    const doorFacing = (bx: number, bz: number): number =>
+      BLOCKS[this.world.getBlock(bx, y, bz)].shape === 'door'
+        ? facingOf(this.world.getBlockState(bx, y, bz))
+        : -1;
+    const hinge = (bx: number, bz: number) =>
+      doorHingeRight(this.world.getBlockState(bx, y, bz), (dx, dz) => doorFacing(bx + dx, bz + dz));
+    const f = doorFacing(x, z);
+    if (f < 0) return null;
+    const right = hinge(x, z);
+    // Its free edge points right (away from a left hinge) or left (away from a right hinge).
+    const [dx, dz] = FACING_DIR[(f + (right ? 3 : 1)) & 3];
+    if (doorFacing(x + dx, z + dz) !== f || hinge(x + dx, z + dz) === right) return null;
+    return [dx, dz];
   }
 
   /** Opens a chest, barrel or shelf: its slots beside the player's inventory. */

@@ -54,7 +54,10 @@ export interface BlockDef {
   lib?: LibBlock;
   /** Storage blocks: how many item slots they hold. */
   storage?: number;
-  /** Doors: the block whose side tile covers their edges, top and bottom (their material). */
+  /**
+   * Doors: the block whose side tile covers their edges, top and bottom (their material). Shelves:
+   * the block whose side tile covers their frame and boards.
+   */
   edgeOf?: number;
   /** Doors: the picture of the panel's upper and lower halves. */
   doorTiles?: { upper: string; lower: string };
@@ -342,6 +345,8 @@ function libShape(b: LibBlock): BlockShape {
       return 'pane';
     case 'bed':
       return 'bed';
+    case 'shelf':
+      return 'shelf';
     case 'sign':
     case 'hanging_sign':
     case 'banner':
@@ -401,11 +406,11 @@ for (const b of [...LIB_BLOCKS].sort((a, c) => a.blockId - c.blockId)) {
 }
 
 /**
- * A door's material, for its edges: its wood's planks, its copper stage, or iron. The picture of
- * the door only covers its two broad faces.
+ * A door's or shelf's material, for its edges or frame: its wood's planks, its copper stage, or
+ * iron. The picture of a door only covers its two broad faces.
  */
-function doorEdgeBlock(key: string): number {
-  const base = key.replace(/_door$/, '');
+function materialBlock(key: string): number {
+  const base = key.replace(/_(door|shelf)$/, '');
   for (const libId of [`${base}_planks`, base === 'copper' ? 'copper_block' : base, `${base}_block`]) {
     // Library ids that are the look of a core block (oak planks) live under the core key.
     const k = LIB_BLOCKS.find((b) => b.id === libId)?.key ?? libId;
@@ -414,7 +419,7 @@ function doorEdgeBlock(key: string): number {
   }
   return PLANKS;
 }
-for (const d of defs) if (d.shape === 'door') d.edgeOf = doorEdgeBlock(d.key);
+for (const d of defs) if (d.shape === 'door' || d.shape === 'shelf') d.edgeOf = materialBlock(d.key);
 
 export const BLOCKS: readonly BlockDef[] = defs.map((d, id) => ({ ...d, id }));
 
