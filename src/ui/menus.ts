@@ -59,7 +59,29 @@ export function saveSettings(s: Settings): void {
   }
 }
 
-function download(name: string, text: string): void {
+/** The claude.ai artifact viewer's file saving, when the game runs as a published artifact. */
+interface ArtifactDownloads {
+  save(request: { filename: string; data: string }): Promise<unknown>;
+}
+interface ArtifactHost {
+  use(name: 'downloads'): Promise<ArtifactDownloads | null>;
+}
+
+async function download(name: string, text: string): Promise<void> {
+  // Inside a claude.ai artifact ordinary downloads are blocked; the viewer saves the file for us
+  // once the player confirms.
+  const host = (window as { claude?: ArtifactHost }).claude;
+  const saver = host ? await host.use('downloads').catch(() => null) : null;
+  if (saver) {
+    try {
+      await saver.save({ filename: name, data: text });
+    } catch (e) {
+      const code = (e as { code?: string }).code;
+      if (code !== 'declined')
+        alert(`The world couldn't be saved to a file here (${code ?? 'unavailable'}).`);
+    }
+    return;
+  }
   const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
   const a = h('a', { href: url, download: name });
   document.body.append(a);
@@ -70,7 +92,7 @@ function download(name: string, text: string): void {
 
 export async function exportWorldToFile(meta: WorldMeta): Promise<void> {
   const json = await exportWorld(meta.id);
-  download(`${meta.name.replace(/[^\w-]+/g, '_') || 'world'}.${GAME_SLUG}.json`, json);
+  await download(`${meta.name.replace(/[^\w-]+/g, '_') || 'world'}.${GAME_SLUG}.json`, json);
 }
 
 export class MainMenu {
