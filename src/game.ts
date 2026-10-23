@@ -1059,7 +1059,7 @@ export class Game implements ScreenHost {
     if (this.player.creative) {
       if (justPressed || this.attackCooldown <= 0) {
         this.attackCooldown = 0.2;
-        this.breakBlock(hit.x, hit.y, hit.z, false);
+        this.breakBlock(hit.x, hit.y, hit.z, true);
         this.viewmodel.doSwing();
       }
       this.breaking = null;
@@ -1104,11 +1104,16 @@ export class Game implements ScreenHost {
     this.particles.burst(new THREE.Vector3(x + 0.5, y + 0.5, z + 0.5), tileColor(b.tiles.side), 16, {
       speed: 3,
     });
-    if (drops && !this.player.creative && id !== PHOTO) {
+    // What it drops lands in the world, to be picked up by walking over it (in creative too).
+    if (drops && id !== PHOTO) {
       const list = b.drops ?? [{ item: b.key }];
       for (const d of list) {
         if (Math.random() < (d.chance ?? 1))
-          this.giveOrDrop({ id: d.item, count: d.count ?? 1 }, new THREE.Vector3(x + 0.5, y + 0.5, z + 0.5));
+          this.dropped.drop(
+            { id: d.item, count: d.count ?? 1 },
+            new THREE.Vector3(x + 0.5, y + 0.3, z + 0.5),
+            new THREE.Vector3((Math.random() - 0.5) * 2, 3, (Math.random() - 0.5) * 2),
+          );
       }
     }
     this.world.flushDirtyNear(new THREE.Vector3(x, y, z));
