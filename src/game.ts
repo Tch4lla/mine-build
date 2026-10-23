@@ -455,12 +455,14 @@ export class Game implements ScreenHost {
   dropStack(stack: ItemStack): void {
     const eye = this.player.eye();
     const look = this.player.look();
-    this.dropped.drop(
-      stack,
-      eye.addScaledVector(look, 0.6).add(new THREE.Vector3(0, -0.3, 0)),
-      look.multiplyScalar(5).add(new THREE.Vector3(0, 2, 0)),
-      2,
-    );
+    // Tossed a little way ahead; from the eye itself when looking at a wall up close, so it never
+    // starts inside a block.
+    const at = eye
+      .clone()
+      .addScaledVector(look, 0.6)
+      .add(new THREE.Vector3(0, -0.3, 0));
+    const inside = IS_SOLID[this.world.getBlock(Math.floor(at.x), Math.floor(at.y), Math.floor(at.z))];
+    this.dropped.drop(stack, inside ? eye : at, look.multiplyScalar(3).add(new THREE.Vector3(0, 2, 0)), 1);
   }
 
   async importPhotoFiles(files: FileList | File[], giveFrames = false): Promise<void> {
@@ -1104,16 +1106,13 @@ export class Game implements ScreenHost {
     this.particles.burst(new THREE.Vector3(x + 0.5, y + 0.5, z + 0.5), tileColor(b.tiles.side), 16, {
       speed: 3,
     });
-    // What it drops lands in the world, to be picked up by walking over it (in creative too).
+    // What it drops goes straight into the inventory (in creative too); only what doesn't fit
+    // lands in the world.
     if (drops && id !== PHOTO) {
       const list = b.drops ?? [{ item: b.key }];
       for (const d of list) {
         if (Math.random() < (d.chance ?? 1))
-          this.dropped.drop(
-            { id: d.item, count: d.count ?? 1 },
-            new THREE.Vector3(x + 0.5, y + 0.3, z + 0.5),
-            new THREE.Vector3((Math.random() - 0.5) * 2, 3, (Math.random() - 0.5) * 2),
-          );
+          this.giveOrDrop({ id: d.item, count: d.count ?? 1 }, new THREE.Vector3(x + 0.5, y + 0.5, z + 0.5));
       }
     }
     this.world.flushDirtyNear(new THREE.Vector3(x, y, z));

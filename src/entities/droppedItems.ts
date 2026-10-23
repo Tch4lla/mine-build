@@ -5,6 +5,22 @@ import type { World } from '../world/world';
 import type { ItemStack } from '../items/inventory';
 import { itemModel } from '../items/icons';
 
+/** How far from the player's body items are drawn in, and how close they are collected. */
+const MAGNET_RANGE = 2.5;
+const COLLECT_RANGE = 1.1;
+/** Blocks per second an item is drawn in at. */
+const MAGNET_SPEED = 8;
+/** Feet to eyes. */
+const BODY_HEIGHT = 1.62;
+
+/**
+ * Whether an item moving into the solid block whose bottom is at `cellY` lands on top of it: only
+ * when it came from above, so a thrown item stops at a wall instead of climbing it.
+ */
+export function landsOn(prevY: number, cellY: number): boolean {
+  return prevY >= cellY + 1 - 0.05;
+}
+
 export interface DroppedItem {
   stack: ItemStack;
   pos: THREE.Vector3;
@@ -12,6 +28,8 @@ export interface DroppedItem {
   age: number;
   /** Seconds before it can be picked up. */
   pickupDelay: number;
+  /** The inventory had no room for it: left alone until the player walks away and comes back. */
+  full?: boolean;
   mesh: THREE.Object3D;
 }
 
@@ -64,34 +82,58 @@ export class DroppedItems {
   }
 
   update(dt: number, time: number, playerPos: THREE.Vector3, collect: (stack: ItemStack) => number): void {
+    // The player's body, feet to eyes: items are picked up from anywhere along it.
+    const feet = playerPos;
+    const chest = playerPos.clone().add(new THREE.Vector3(0, 1, 0));
     for (const d of [...this.list]) {
       d.age += dt;
-      d.vel.y -= 18 * dt;
-      d.vel.x *= 1 - 2 * dt;
-      d.vel.z *= 1 - 2 * dt;
-      const next = d.pos.clone().addScaledVector(d.vel, dt);
-      const below = this.world.getBlock(Math.floor(next.x), Math.floor(next.y), Math.floor(next.z));
-      if (IS_SOLID[below]) {
-        next.y = Math.floor(next.y) + 1;
+      const toBody = (p: THREE.Vector3) =>
+        p.distanceTo(
+          new THREE.Vector3(feet.x, THREE.MathUtils.clamp(p.y, feet.y, feet.y + BODY_HEIGHT), feet.z),
+        );
+      const ready = d.age > d.pickupDelay && !d.full;
+      if (ready && toBody(d.pos) < MAGNET_RANGE) {
+        // Drawn in towards the player, through blocks, so nothing ends up out of reach on a ledge,
+        // on a roof or under someone flying.
+        const pull = chest.clone().sub(d.pos);
+        const step = Math.min(pull.length(), MAGNET_SPEED * dt);
+        d.pos.addScaledVector(pull.normalize(), step);
         d.vel.set(0, 0, 0);
+      } else {
+        d.vel.y -= 18 * dt;
+        d.vel.x *= 1 - 2 * dt;
+        d.vel.z *= 1 - 2 * dt;
+        const next = d.pos.clone().addScaledVector(d.vel, dt);
+        const cell = (p: THREE.Vector3) =>
+          this.world.getBlock(Math.floor(p.x), Math.floor(p.y), Math.floor(p.z));
+        if (IS_SOLID[cell(next)]) {
+          if (landsOn(d.pos.y, Math.floor(next.y))) {
+            // Falling onto the top of a block: rest on it.
+            next.y = Math.floor(next.y) + 1;
+            d.vel.set(0, 0, 0);
+          } else {
+            // Hitting its side: stop going sideways instead of climbing it.
+            next.x = d.pos.x;
+            next.z = d.pos.z;
+            d.vel.x = 0;
+            d.vel.z = 0;
+          }
+        }
+        d.pos.copy(next);
       }
-      const side = this.world.getBlock(Math.floor(next.x), Math.floor(next.y + 0.1), Math.floor(next.z));
-      if (IS_SOLID[side]) {
-        next.x = d.pos.x;
-        next.z = d.pos.z;
-      }
-      d.pos.copy(next);
       d.mesh.position.set(d.pos.x, d.pos.y + 0.25 + Math.sin(time * 3 + d.age) * 0.06, d.pos.z);
       d.mesh.rotation.y = time * 1.5 + d.age;
 
-      if (
-        d.age > d.pickupDelay &&
-        d.pos.distanceTo(playerPos.clone().add(new THREE.Vector3(0, 0.6, 0))) < 1.6
-      ) {
+      if (ready && toBody(d.pos) < COLLECT_RANGE) {
         const left = collect(d.stack);
         if (left <= 0) this.remove(d);
-        else d.stack.count = left;
+        else {
+          // No room for the rest: it stays where it is until there is.
+          d.stack.count = left;
+          d.full = true;
+        }
       }
+      if (d.full && d.age > d.pickupDelay && toBody(d.pos) > MAGNET_RANGE) d.full = false;
       if (d.age > 600 || d.pos.y < -10) this.remove(d);
     }
   }
